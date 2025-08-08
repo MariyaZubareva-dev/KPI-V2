@@ -1,7 +1,7 @@
 import { API_BASE, COMMON_PASSWORD } from './config.js';
 import { renderDashboard } from './dashboard.js';
 
-const PASSWORD = 'kpi2025'; // общий пароль
+const PASSWORD = COMMON_PASSWORD; // используем один пароль из конфига
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginSection = document.getElementById('login-section');
@@ -46,8 +46,9 @@ document.addEventListener('DOMContentLoaded', () => {
           role: data.role,
           Name: data.name
         };
-        localStorage.setItem('user', JSON.stringify(data));
+        localStorage.setItem('user', JSON.stringify(user));
         location.reload();
+        
     } catch (e) {
       console.error('Ошибка авторизации:', e);
       alert('Ошибка при входе');
