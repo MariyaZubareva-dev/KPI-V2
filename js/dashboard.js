@@ -37,20 +37,28 @@ export async function renderDashboard(user) {
   // 3. Лидерборды
   const leaderWeek = document.createElement('section');
   leaderWeek.id = 'leader-week';
-  leaderWeek.append(document.createElement('h4')).textContent = 'ТОП-3 за неделю';
+  const h4Week = document.createElement('h4');
+  leaderWeek.append(h4Week);
+  h4Week.textContent = 'ТОП-3 за неделю';
   leaderWeek.append(createLeaderboard(usersData, 'week'));
   app.append(leaderWeek);
-
+  
   const leaderMonth = document.createElement('section');
   leaderMonth.id = 'leader-month';
-  leaderMonth.append(document.createElement('h4')).textContent = 'ТОП-3 за месяц';
+  const h4Month = document.createElement('h4');
+  h4Month.textContent = 'ТОП-3 за месяц';
+  leaderMonth.append(h4Month);
   leaderMonth.append(createLeaderboard(usersData, 'month'));
   app.append(leaderMonth);
 
   // 4. Таблица пользователей
   const tableSection = document.createElement('section');
   tableSection.id = 'users-table';
-  tableSection.append(document.createElement('h4')).textContent = 'Сотрудники и баллы';
+
+  const tableTitle = document.createElement('h4');
+  tableTitle.textContent = 'Сотрудники и баллы';
+  tableSection.append(tableTitle);
+
   tableSection.append(createUsersTable(usersData));
   app.append(tableSection);
 
