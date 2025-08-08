@@ -41,10 +41,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     
         const user = {
-          ID: data.email,       // или другой уникальный идентификатор
-          email: data.email,
-          role: data.role,
-          name: data.name
+          ID:    data.email,
+          Email: data.email,  // с большой буквы
+          role:  data.role,
+          name:  data.name    // с большой буквы
         };
         localStorage.setItem('user', JSON.stringify(user));
         location.reload();
