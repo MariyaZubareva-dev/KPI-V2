@@ -1,4 +1,5 @@
-import { API_BASE } from './config.js';
+import { API_BASE, COMMON_PASSWORD } from './config.js';
+import { renderDashboard } from './dashboard.js';
 
 const PASSWORD = 'kpi2025'; // общий пароль
 
@@ -7,46 +8,46 @@ document.addEventListener('DOMContentLoaded', () => {
   const user = JSON.parse(localStorage.getItem('user'));
 
   if (user) {
-    loginSection.style.display = 'none';
-    // В зависимости от роли покажем нужную часть
-    // Например:
-    // import('./dashboard.js').then((module) => module.renderDashboard(user));
-    return;
-  }
-
-  loginSection.style.display = 'block';
-
-  document.getElementById('login-button').addEventListener('click', async () => {
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-
-    if (password !== PASSWORD) {
-      alert('Неверный пароль');
-      return;
+       loginSection.style.display = 'none';
+       renderDashboard(user).catch(err => {
+         console.error('Ошибка при рендере дашборда:', err);
+         alert('Не удалось загрузить дашборд. Проверьте консоль.');
+       });
+       return;
     }
+    
+    loginSection.style.display = 'block';
 
-    try {
-      const url = new URL(API_BASE);
-      url.searchParams.set('action', 'login');
-      url.searchParams.set('email', email);
-      url.searchParams.set('password', password);
-      const res = await fetch(url);
-      const data = await res.json();
+    document.getElementById('login-button').addEventListener('click', async () => {
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
 
-      if (!data.success) {
-        alert('Неверные email или пароль');
-        return;
-      }
-    // полагаем, что Apps Script возвращает { success: true, email, role, name }
-    const user = {
-        ID: data.email,       // или другой уникальный идентификатор
-        Email: data.email,
-        role: data.role,
-        Name: data.name
-    };
+        if (password !== PASSWORD) {
+            alert('Неверный пароль');
+            return;
+        }
 
-      localStorage.setItem('user', JSON.stringify(data));
-      location.reload();
+        try {
+         const url = new URL(API_BASE);
+         url.searchParams.set('action', 'login');
+         url.searchParams.set('email', email);
+         url.searchParams.set('password', password);
+         const res = await fetch(url);
+         const data = await res.json();
+
+        if (!data.success) {
+          alert('Неверные email или пароль');
+          return;
+        }
+    
+        const user = {
+          ID: data.email,       // или другой уникальный идентификатор
+          Email: data.email,
+          role: data.role,
+          Name: data.name
+        };
+        localStorage.setItem('user', JSON.stringify(data));
+        location.reload();
     } catch (e) {
       console.error('Ошибка авторизации:', e);
       alert('Ошибка при входе');
