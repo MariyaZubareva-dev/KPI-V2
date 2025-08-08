@@ -20,10 +20,13 @@ export async function renderDashboard(user) {
   app.append(title);
 
   // 1. Получаем данные департамента и пользователей параллельно
-  const [deptData, usersData] = await Promise.all([
+  const [deptRes, usersRes] = await Promise.all([
     getProgress('department'),
     getProgress('users')
   ]);
+
+  const deptData = deptRes.data || deptRes;
+  const usersData = usersRes.data || usersRes;
 
   // 2. Рендер общего прогресса
   const deptSection = document.createElement('section');
@@ -38,8 +41,8 @@ export async function renderDashboard(user) {
   const leaderWeek = document.createElement('section');
   leaderWeek.id = 'leader-week';
   const h4Week = document.createElement('h4');
-  leaderWeek.append(h4Week);
   h4Week.textContent = 'ТОП-3 за неделю';
+  leaderWeek.append(h4Week);
   leaderWeek.append(createLeaderboard(usersData, 'week'));
   app.append(leaderWeek);
   
@@ -54,11 +57,9 @@ export async function renderDashboard(user) {
   // 4. Таблица пользователей
   const tableSection = document.createElement('section');
   tableSection.id = 'users-table';
-
   const tableTitle = document.createElement('h4');
   tableTitle.textContent = 'Сотрудники и баллы';
   tableSection.append(tableTitle);
-
   tableSection.append(createUsersTable(usersData));
   app.append(tableSection);
 
