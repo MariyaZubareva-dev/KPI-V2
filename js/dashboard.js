@@ -9,6 +9,8 @@ export async function renderDashboard(user) {
   const userName = user.Name || user.name || user.Email || 'Пользователь';
   const role     = user.role;
   const userID   = user.ID || user.Email;
+  console.log('renderDashboard, user:', user);
+  console.log('renderDashboard, role:', role);
   const app = document.getElementById('app');
   app.innerHTML = ''; // очистить предыдущий контент
 
@@ -54,6 +56,7 @@ export async function renderDashboard(user) {
 
   // 5. Admin-панель только для админа
   if (role === 'admin') {
+    console.log('Отрисовываем Admin-панель');
     const adminModule = await import('./admin-panel.js');
     app.append(adminModule.createAdminPanel(usersData));
   }
