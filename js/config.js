@@ -9,7 +9,7 @@ export const ENDPOINTS = {
 };
 
 // Общий пароль для всех пользователей
-export const COMMON_PASSWORD = 'KPI2025';
+export const COMMON_PASSWORD = 'kpi2025';
 
 // Максимальное число баллов в неделю (для расчёта процента департамента)
 export const MAX_WEEKLY_POINTS = 15.25 * 6; // 6 сотрудников

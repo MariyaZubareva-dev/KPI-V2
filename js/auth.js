@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const email = document.getElementById('email').value.trim();
         const password = document.getElementById('password').value;
 
-        if (password !== PASSWORD) {
+        if (password !== COMMON_PASSWORD) {
             alert('Неверный пароль');
             return;
         }
@@ -42,13 +42,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
         const user = {
           ID: data.email,       // или другой уникальный идентификатор
-          Email: data.email,
+          email: data.email,
           role: data.role,
-          Name: data.name
+          name: data.name
         };
         localStorage.setItem('user', JSON.stringify(user));
         location.reload();
-        
+
     } catch (e) {
       console.error('Ошибка авторизации:', e);
       alert('Ошибка при входе');
