@@ -26,13 +26,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      const res = await fetch(`${API_BASE}?action=getUser&email=${encodeURIComponent(email)}`);
+      const url = new URL(API_BASE);
+      url.searchParams.set('action', 'login');
+      url.searchParams.set('email', email);
+      url.searchParams.set('password', password);
+      const res = await fetch(url);
       const data = await res.json();
 
-      if (!data || !data.ID) {
-        alert('Пользователь не найден');
+      if (!data.success) {
+        alert('Неверные email или пароль');
         return;
       }
+    // полагаем, что Apps Script возвращает { success: true, email, role, name }
+    const user = {
+        ID: data.email,       // или другой уникальный идентификатор
+        Email: data.email,
+        role: data.role,
+        Name: data.name
+    };
 
       localStorage.setItem('user', JSON.stringify(data));
       location.reload();
