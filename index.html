@@ -26,7 +26,34 @@
       <button id="login-button" class="btn btn-primary">Войти</button>
     </div>
 
-    <!-- Здесь будет контент: форма логина или дашборд -->
+    <!-- Админская панель -->
+    <div id="dashboard-section" style="display: none;">
+      <h2>Добро пожаловать, <span id="user-name"></span>!</h2>
+
+      <div class="my-4">
+        <h4>Прогресс отдела (неделя)</h4>
+        <div id="progress-chart"></div>
+      </div>
+
+      <!-- Панель администратора -->
+      <div id="admin-panel" style="display: none;">
+        <h4>Админ-панель</h4>
+        <div id="admin-kpi-list" class="mt-3"></div>
+      </div>
+
+      <!-- Панель сотрудника -->
+      <div id="employee-panel" style="display: none;">
+        <h4>Ваши KPI</h4>
+        <div id="employee-kpi-list" class="mt-3"></div>
+      </div>
+
+      <!-- Панель наблюдателя -->
+      <div id="observer-panel" style="display: none;">
+        <h4>Наблюдение за прогрессом</h4>
+        <div id="observer-progress" class="mt-3"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Скрипты -->
