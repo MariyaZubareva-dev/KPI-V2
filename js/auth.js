@@ -41,8 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     
         const user = {
-          ID:    data.email,
-          Email: data.email,  // с большой буквы
+          id:    data.email,
+          email: data.email,  // с большой буквы
           role:  data.role,
           name:  data.name    // с большой буквы
         };
