@@ -6,7 +6,9 @@ import { createProgressBar, createUsersTable, createLeaderboard } from './ui-com
  * @param {{ID: string, Email: string, role: string, Name: string}} user
  */
 export async function renderDashboard(user) {
-  const { role, ID: userID, Name: userName } = user;
+  const userName = user.Name || user.name || user.Email || 'Пользователь';
+  const role     = user.role;
+  const userID   = user.ID || user.Email;
   const app = document.getElementById('app');
   app.innerHTML = ''; // очистить предыдущий контент
 
