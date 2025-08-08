@@ -1,5 +1,5 @@
 // Базовый URL вашего Apps Script веб-приложения
-export const API_BASE = 'https://script.google.com/macros/s/AKfycbwcfhnRiY3ZilJlbBLyMyKejw0-5rgUiFwnw_QT74RS94G_zhQ8sBavYfCNkzJrE1_7/exec';
+export const API_BASE = 'https://script.google.com/macros/s/AKfycbwo-kmDxSXNlbiiNo-RI70gUfHTC3Yn7dVRnpOxAHTIG_3zshq5rHGQP_Fdj2R2lkU/exec';
 
 // Эндпоинты для разных действий
 export const ENDPOINTS = {
