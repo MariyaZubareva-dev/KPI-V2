@@ -1,63 +1,86 @@
+// js/api.js
 import { API_BASE } from './config.js';
 
+// ---------- helpers ----------
+async function parseResponse(res) {
+  // Apps Script иногда оборачивает JSON в <pre>...</pre>
+  const raw = await res.text();
+  const clean = raw.trim()
+    .replace(/^<pre[^>]*>/i, '')
+    .replace(/<\/pre>$/i, '');
+  try {
+    return JSON.parse(clean);
+  } catch {
+    // вернём строку как есть (напр., "ok")
+    return clean;
+  }
+}
+
+async function request(action, { method = 'GET', data = null, query = {} } = {}) {
+  const url = new URL(API_BASE);
+  url.searchParams.set('action', action);
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== null && v !== '') {
+      url.searchParams.set(k, v);
+    }
+  }
+
+  const init = {
+    method,
+    mode: 'cors',
+    credentials: 'include', // если используете cookie-сессию у Apps Script
+  };
+
+  if (method === 'POST') {
+    init.headers = { 'Content-Type': 'application/json' };
+    if (data) init.body = JSON.stringify(data);
+  }
+
+  const res = await fetch(url.toString(), init);
+
+  if (!res.ok) {
+    let body = '';
+    try { body = await res.text(); } catch {}
+    throw new Error(`${action} failed: ${res.status} ${res.statusText} ${body?.slice(0, 200)}`);
+  }
+
+  return parseResponse(res);
+}
+
+// ---------- API ----------
 /**
- * Получить данные прогресса
- * @param {string} scope — 'department', 'users' или 'user'
- * @param {string} [userID] — обязательен, если scope === 'user'
+ * Прогресс (месячный/пользовательский и т.п.)
+ * @param {('user'|'dept'|'all'|string)} scope
+ * @param {string} userID
  */
 export async function getProgress(scope, userID) {
-  const url = new URL(API_BASE);
-  url.searchParams.set('action', 'getProgress');
-  url.searchParams.set('scope', scope);
-  if (userID) {
-    url.searchParams.set('userID', userID);
-  }
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`getProgress failed: ${res.status}`);
-  return res.json();
+  return request('getProgress', { method: 'GET', query: { scope, userID } });
 }
 
 /**
- * Записать отметку KPI
- * @param {string} userID
- * @param {string} kpiId
- * @param {number} score
- * @param {string} week — формат 'YYYY-WW'
+ * Запись KPI события
+ * payload: { userID, date, metric, value, comment, ... }
  */
-export async function recordKPI(userID, kpiId, score, week) {
-  const url = new URL(API_BASE);
-  url.searchParams.set('action', 'recordKPI');
-  url.searchParams.set('userID', userID);
-  url.searchParams.set('kpiId', kpiId);
-  url.searchParams.set('score', String(score));
-  url.searchParams.set('week', week);
-  const res = await fetch(url, { method: 'POST' });
-  if (!res.ok) throw new Error(`recordKPI failed: ${res.status}`);
-  return res.json();
+export async function recordKPI(payload) {
+  return request('recordKPI', { method: 'POST', data: payload });
 }
 
 /**
- * Получить данные пользователя по email
- * @param {string} email
+ * Логирование произвольных событий в Sheets
+ * payload: { event, userID, meta?: {...} }
  */
-export async function getUserByEmail(email) {
-  const url = new URL(API_BASE);
-  url.searchParams.set('action', 'getUser');
-  url.searchParams.set('email', email);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`getUserByEmail failed: ${res.status}`);
-  return res.json();
-}
-export async function logEvent(event, { userID='', email='', details='' } = {}) {
+export async function logEvent(payload) {
+  const enriched = { ...payload, ts: new Date().toISOString() };
   try {
-    const url = new URL(API_BASE);
-    url.searchParams.set('action', 'log');
-    url.searchParams.set('event', event);
-    if (userID) url.searchParams.set('userID', userID);
-    if (email)  url.searchParams.set('email',  email);
-    if (details)url.searchParams.set('details', String(details));
-    await fetch(url); // fire-and-forget
+    return await request('logEvent', { method: 'POST', data: enriched });
   } catch (e) {
-    console.warn('logEvent failed', e);
+    // чтобы UI не падал из-за логов
+    console.warn('logEvent failed:', e);
+    return { ok: false, error: e.message };
   }
 }
+
+// ---------- aliases (на случай старых импортов) ----------
+export { getProgress as apiGetProgress };
+export { recordKPI as apiRecordKPI };
+export { logEvent as apiLogEvent };
