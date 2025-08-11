@@ -97,11 +97,4 @@ export async function renderDashboard(user) {
     app.append(adminModule.createAdminPanel(employees));
   }
 }
-
-// Инициализация при загрузке страницы
-document.addEventListener('DOMContentLoaded', () => {
-  const user = JSON.parse(localStorage.getItem('user'));
-  if (user) {
-    renderDashboard(user).catch(err => console.error(err));
-  }
-});
+ 
