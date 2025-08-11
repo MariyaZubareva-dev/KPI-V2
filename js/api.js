@@ -19,6 +19,8 @@ async function request(action, { method = 'GET', data = null, query = {} } = {})
   for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== null && v !== '') {
       url.searchParams.set(k, v);
+      url.searchParams.set('_ts', Date.now().toString());
+      console.log('[API]', action, method, url.toString());
     }
   }
 
