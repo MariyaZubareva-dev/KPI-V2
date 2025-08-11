@@ -40,8 +40,8 @@ export async function renderDashboard(user) {
 
   // 1. Получаем данные департамента и пользователей параллельно
   const [deptRes, usersRes] = await Promise.all([
-    GetProgress('department'),
-    GetProgress('users')
+    getProgress('department'),
+    getProgress('users')
   ]);
   loader.remove();
 
