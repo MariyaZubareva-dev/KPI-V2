@@ -76,14 +76,19 @@ async function loadKpisForUser(userID, container) {
     const checkbox = label.querySelector('input');
     checkbox.addEventListener('change', async () => {
       checkbox.disabled = true;
-      await recordKPI(userID, kpi.KPI_ID, kpi.weight, kpi.week);
-      // После записи обновляем и список, и дашборд
-      await loadKpisForUser(userID, container);
-      window.location.reload(); // простой способ обновить дашборд
-      await logEvent('kpi_recorded', {
-        userID,
-        details: JSON.stringify({ kpiId: kpi.KPI_ID, weight: kpi.weight })
-      });
+      try {
+        await recordKPI({ userID, kpiId: kpi.KPI_ID, score: kpi.weight });
+        await logEvent('kpi_recorded', {
+          userID,
+          details: { kpiId: kpi.KPI_ID, score: kpi.weight }
+        });
+        await loadKpisForUser(userID, container); // перерисуем список
+        window.location.reload();                  // обновим дашборд
+      } catch (err) {
+        console.error('Ошибка записи KPI:', err);
+        alert('Не удалось записать KPI');
+        checkbox.disabled = false;
+      }
     });
     container.appendChild(label);
   });

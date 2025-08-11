@@ -1,4 +1,4 @@
-import { apiGetProgress, logEvent } from './api.js';
+import { getProgress, logEvent } from './api.js';
 import { createProgressBar, createUsersTable, createLeaderboard, createLoader } from './ui-components.js';
 
 
@@ -40,8 +40,8 @@ export async function renderDashboard(user) {
 
   // 1. Получаем данные департамента и пользователей параллельно
   const [deptRes, usersRes] = await Promise.all([
-    apiGetProgress('department'),
-    apiGetProgress('users')
+    GetProgress('department'),
+    GetProgress('users')
   ]);
   loader.remove();
 
