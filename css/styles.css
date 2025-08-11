@@ -69,3 +69,5 @@ h5 { font-size: var(--fs-h5); line-height: var(--lh-h5); font-weight: var(--fw-m
 .kpi-char-row { margin-top: 8px; }
 .kpi-char-track { display: block; }        /* ширина дорожки управляет позицией иконки */
 .kpi-char-track img { vertical-align: top; }  /* чтобы не было «просвета» */
+
+#app h2 { margin: 0; }
