@@ -90,3 +90,24 @@ export async function logEvent(event, extra = {}) {
 
 // алиасы
 export { getProgress as apiGetProgress, recordKPI as apiRecordKPI, logEvent as apiLogEvent };
+
+// === Доп. обёртки для удобства фронта ===
+export async function getUserKPIs(userID, period = 'this_week') {
+  const params = { scope: 'user', userID, period };
+  const raw = await request('getProgress', { method: 'GET', params });
+  if (raw?.ok === false || raw?.success === false) {
+    throw new Error(raw?.error || raw?.message || 'getUserKPIs returned error');
+  }
+  return raw?.data ?? raw;
+}
+
+export async function getUsersAggregate(period = 'this_week') {
+  // Бэкенд поддерживает и параметр period для scope=users, и отдельный scope=users_lastweek
+  const params = (period === 'prev_week') ? { scope: 'users_lastweek' } : { scope: 'users' };
+  const raw = await request('getProgress', { method: 'GET', params });
+  if (raw?.ok === false || raw?.success === false) {
+    throw new Error(raw?.error || raw?.message || 'getUsersAggregate returned error');
+  }
+  const data = raw?.data ?? raw;
+  return Array.isArray(data) ? data : [];
+}

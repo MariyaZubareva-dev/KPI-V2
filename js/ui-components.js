@@ -151,3 +151,37 @@ export function createLeaderboard(users, period = 'week') {
 
   return container;
 }
+
+// Рендер списка KPI с бейджами (сортировка по weight уже делает сервер)
+export function createKPIList(kpis = []) {
+  const wrap = document.createElement('div');
+  if (!Array.isArray(kpis) || kpis.length === 0) {
+    wrap.className = 'text-secondary';
+    wrap.textContent = 'Нет KPI для выбранного периода.';
+    return wrap;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'list-group';
+
+  kpis.forEach(k => {
+    const item = document.createElement('div');
+    item.className = 'list-group-item d-flex justify-content-between align-items-start';
+
+    const left = document.createElement('div');
+    left.innerHTML = `
+      <div class="fw-medium">${k.name}</div>
+      <div class="text-tertiary small">Вес: ${k.weight}</div>
+    `;
+
+    const badge = document.createElement('span');
+    badge.className = `badge ${k.done ? 'bg-success' : 'bg-secondary'} rounded-pill`;
+    badge.textContent = k.done ? 'Выполнено' : 'Не выполнено';
+
+    item.append(left, badge);
+    list.append(item);
+  });
+
+  wrap.append(list);
+  return wrap;
+}
