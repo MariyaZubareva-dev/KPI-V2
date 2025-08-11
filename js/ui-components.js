@@ -8,10 +8,15 @@
  */
 export function createProgressBar(percent, size = 'department') {
   const wrapper = document.createElement('div');
-  wrapper.classList.add(`progress-${size}`, 'mb-3');
+  // делаем горизонтальное выравнивание «бар + иконка»
+  wrapper.classList.add(`progress-${size}`, 'mb-3', 'd-flex', 'align-items-center', 'gap-3');
 
   const bar = document.createElement('div');
   bar.classList.add('progress');
+  // чтобы бар занимал ширину и не «сжимался»
+  bar.style.flex = '1 1 auto';
+  bar.style.minWidth = '280px';
+
   bar.innerHTML = `
     <div class="progress-bar" role="progressbar"
          style="width: ${percent}%"
@@ -26,37 +31,41 @@ export function createProgressBar(percent, size = 'department') {
 }
 
 function createCharacterImage(percent) {
-  // ниже 30 — персонаж не показывается
-  if (percent < 30) return document.createElement('span');
-
   const img = document.createElement('img');
-  img.width = 64;           // показываем маленькими (источник может быть 512x512)
+  img.width = 64;
   img.height = 64;
   img.alt = 'KPI Character';
   img.decoding = 'async';
   img.loading = 'lazy';
 
-  if (percent < 50) {
-    img.src = './images/kopatych.png';           // 30–49
+  if (percent < 30) {
+    img.src = './images/krosh.png';                   // 0–29
+    img.title = 'Старт (0–29)';
+  } else if (percent < 50) {
+    img.src = './images/kopatych.png';                // 30–49
     img.title = 'Зима впроголодь (≥30)';
   } else if (percent < 70) {
-    img.src = './images/karkarych-sovunya.png';  // 50–69
+    img.src = './images/karkarych-sovunya.png';       // 50–69
     img.title = 'Минимум, чтобы выжить (≥50)';
   } else {
-    img.src = './images/nyusha.png';             // ≥70
+    img.src = './images/nyusha.png';                  // ≥70
     img.title = 'Изобилие (≥70)';
   }
 
-  // На всякий случай красивый фолбэк, если файла нет
+  // Аккуратный фолбэк: если файла нет — показываем эмодзи, но место и клик сохраняются
   img.onerror = () => {
     const fallback = document.createElement('span');
     fallback.style.fontSize = '28px';
-    fallback.textContent = percent < 50 ? '🥕' : (percent < 70 ? '🍵' : '👑');
+    if (percent < 30)      fallback.textContent = '🐰'; // Крош
+    else if (percent < 50) fallback.textContent = '🥕';
+    else if (percent < 70) fallback.textContent = '🍵';
+    else                   fallback.textContent = '👑';
     img.replaceWith(fallback);
   };
 
   return img;
 }
+
 
 /**
  * Создаёт HTML-таблицу сотрудников и их баллов
