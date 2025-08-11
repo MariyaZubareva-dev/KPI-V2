@@ -1,57 +1,59 @@
-import { API_BASE, COMMON_PASSWORD } from './config.js';
+import { API_BASE } from './config.js';
 import { renderDashboard } from './dashboard.js';
-
-const PASSWORD = COMMON_PASSWORD; // используем один пароль из конфига
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginSection = document.getElementById('login-section');
   const user = JSON.parse(localStorage.getItem('user'));
 
   if (user) {
-       loginSection.style.display = 'none';
-       renderDashboard(user).catch(err => {
-         console.error('Ошибка при рендере дашборда:', err);
-         alert('Не удалось загрузить дашборд. Проверьте консоль.');
-       });
-       return;
-    }
-    
+    // Если логин-блок есть в DOM — скроем; если нет — просто продолжим
+    if (loginSection) loginSection.style.display = 'none';
+
+    renderDashboard(user).catch(err => {
+      console.error('Ошибка при рендере дашборда:', err);
+      alert('Не удалось загрузить дашборд. Проверьте консоль.');
+    });
+    return;
+  }
+
+  // Логин-форма должна быть видна только если её элемент реально присутствует
+  if (loginSection) {
     loginSection.style.display = 'block';
 
-    document.getElementById('login-button').addEventListener('click', async () => {
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-
-        if (password !== COMMON_PASSWORD) {
-            alert('Неверный пароль');
-            return;
-        }
+    const btn = document.getElementById('login-button');
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        const email = (document.getElementById('email')?.value || '').trim();
+        const password = (document.getElementById('password')?.value || '');
 
         try {
-         const url = new URL(API_BASE);
-         url.searchParams.set('action', 'login');
-         url.searchParams.set('email', email);
-         url.searchParams.set('password', password);
-         const res = await fetch(url);
-         const data = await res.json();
+          const url = new URL(API_BASE);
+          url.searchParams.set('action', 'login');
+          url.searchParams.set('email', email);
+          url.searchParams.set('password', password);
+          const res = await fetch(url);
+          const data = await res.json();
 
-        if (!data.success) {
-          alert('Неверные email или пароль');
-          return;
+          if (!data.success) {
+            alert('Неверные email или пароль');
+            return;
+          }
+
+          const user = {
+            id:    data.email,
+            email: data.email,
+            role:  data.role,
+            name:  data.name
+          };
+          localStorage.setItem('user', JSON.stringify(user));
+          location.reload(); // после входа просто перезагружаем
+        } catch (e) {
+          console.error('Ошибка авторизации:', e);
+          alert('Ошибка при входе');
         }
-    
-        const user = {
-          id:    data.email,
-          email: data.email,  // с большой буквы
-          role:  data.role,
-          name:  data.name    // с большой буквы
-        };
-        localStorage.setItem('user', JSON.stringify(user));
-        location.reload();
-
-    } catch (e) {
-      console.error('Ошибка авторизации:', e);
-      alert('Ошибка при входе');
+      });
     }
-  });
+  } else {
+    console.warn('login-section не найден в DOM');
+  }
 });
