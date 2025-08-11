@@ -32,13 +32,13 @@ export async function renderDashboard(user) {
     u => String(u.role || '').toLowerCase() === 'employee'
   );
 
-  // 2. Рендер общего прогресса
+  // 2. Рендер общего прогресса (МЕСЯЦ)
   const deptSection = document.createElement('section');
   deptSection.id = 'dept-section';
   const deptTitle = document.createElement('h3');
-  deptTitle.textContent = 'Прогресс отдела (неделя)';
+  deptTitle.textContent = 'Прогресс отдела (месяц)';
   deptSection.append(deptTitle);
-  deptSection.append(createProgressBar(deptData.weekPercent, 'department'));
+  deptSection.append(createProgressBar(deptData.monthPercent, 'department'));
   app.append(deptSection);
 
   // 3. Лидерборды

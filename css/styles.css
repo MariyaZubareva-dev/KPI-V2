@@ -58,3 +58,14 @@ h5 { font-size: var(--fs-h5); line-height: var(--lh-h5); font-weight: var(--fw-m
 .text-small, .text-caption { font-size: var(--fs-text-small); line-height: var(--lh-text-small); font-weight: var(--fw-regular); color: var(--text-secondary); }
 .text-bold-primary { font-size: var(--fs-text-primary); line-height: var(--lh-text-primary); font-weight: var(--fw-bold); color: var(--text-primary); }
 .text-bold-secondary { font-size: var(--fs-text-secondary); line-height: var(--lh-text-secondary); font-weight: var(--fw-bold); color: var(--text-secondary); }
+
+/* Прогресс-бар: цвета по порогам */
+.progress .progress-bar.bar-critical { background-color: #FF0404; }  /* System Critical */
+.progress .progress-bar.bar-30      { background-color: #0285FF; }  /* Accent Eeletric 30–49 */
+.progress .progress-bar.bar-50      { background-color: #0051F9; }  /* Primary 50–69 */
+.progress .progress-bar.bar-70      { background-color: #36B37E; }  /* System Success ≥70 */
+
+/* Ряд с персонажем под прогресс-баром */
+.kpi-char-row { margin-top: 8px; }
+.kpi-char-track { display: block; }        /* ширина дорожки управляет позицией иконки */
+.kpi-char-track img { vertical-align: top; }  /* чтобы не было «просвета» */

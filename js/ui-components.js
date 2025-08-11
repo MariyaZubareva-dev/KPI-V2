@@ -7,28 +7,50 @@
  * @returns {HTMLElement}
  */
 export function createProgressBar(percent, size = 'department') {
-  const wrapper = document.createElement('div');
-  // делаем горизонтальное выравнивание «бар + иконка»
-  wrapper.classList.add(`progress-${size}`, 'mb-3', 'd-flex', 'align-items-center', 'gap-3');
+  const p = Math.max(0, Math.min(100, Number(percent) || 0));
 
+  const wrapper = document.createElement('div');
+  // горизонтально: бар сверху, персонаж снизу
+  wrapper.classList.add(`progress-${size}`, 'mb-3');
+
+  // сам прогресс-бар
   const bar = document.createElement('div');
   bar.classList.add('progress');
-  // чтобы бар занимал ширину и не «сжимался»
-  bar.style.flex = '1 1 auto';
-  bar.style.minWidth = '280px';
 
-  bar.innerHTML = `
-    <div class="progress-bar" role="progressbar"
-         style="width: ${percent}%"
-         aria-valuenow="${percent}"
-         aria-valuemin="0"
-         aria-valuemax="100">
-    </div>
-  `;
+  const barInner = document.createElement('div');
+  barInner.classList.add('progress-bar', barClassByPercent(p));
+  barInner.setAttribute('role', 'progressbar');
+  barInner.style.width = `${p}%`;
+  barInner.setAttribute('aria-valuenow', String(p));
+  barInner.setAttribute('aria-valuemin', '0');
+  barInner.setAttribute('aria-valuemax', '100');
+  bar.appendChild(barInner);
 
-  wrapper.append(bar, createCharacterImage(percent));
+  // Ряд с персонажем ПОД баром, выравниваем по концу закрашенной части:
+  // делаем "дорожку" шириной = процент, и выравниваем контент вправо
+  const charRow = document.createElement('div');
+  charRow.classList.add('kpi-char-row'); // для отступов
+
+  const track = document.createElement('div');
+  track.classList.add('kpi-char-track');
+  track.style.width = `${p}%`;     // <- позиционирует по концу прогресса
+  track.style.textAlign = 'right'; // <- иконка прижимается к правому краю дорожки
+
+  const img = createCharacterImage(p);
+  track.appendChild(img);
+  charRow.appendChild(track);
+
+  wrapper.append(bar, charRow);
   return wrapper;
 }
+
+function barClassByPercent(p) {
+  if (p < 30) return 'bar-critical'; // красный
+  if (p < 50) return 'bar-30';       // 30–49
+  if (p < 70) return 'bar-50';       // 50–69
+  return 'bar-70';                   // ≥70
+}
+
 
 function createCharacterImage(percent) {
   const img = document.createElement('img');
