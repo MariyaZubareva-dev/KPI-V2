@@ -27,6 +27,10 @@ export async function renderDashboard(user) {
 
   const deptData = deptRes.data || deptRes;
   const usersData = usersRes.data || usersRes;
+  // Показываем в UI только сотрудников с ролью employee
+  const employees = (usersData || []).filter(
+    u => String(u.role || '').toLowerCase() === 'employee'
+  );
 
   // 2. Рендер общего прогресса
   const deptSection = document.createElement('section');
@@ -43,7 +47,7 @@ export async function renderDashboard(user) {
   const h4Week = document.createElement('h4');
   h4Week.textContent = 'ТОП-3 за неделю';
   leaderWeek.append(h4Week);
-  leaderWeek.append(createLeaderboard(usersData, 'week'));
+  leaderWeek.append(createLeaderboard(employees, 'week'));
   app.append(leaderWeek);
   
   const leaderMonth = document.createElement('section');
@@ -51,7 +55,7 @@ export async function renderDashboard(user) {
   const h4Month = document.createElement('h4');
   h4Month.textContent = 'ТОП-3 за месяц';
   leaderMonth.append(h4Month);
-  leaderMonth.append(createLeaderboard(usersData, 'month'));
+  leaderMonth.append(createLeaderboard(employees, 'month'));
   app.append(leaderMonth);
 
   // 4. Таблица пользователей
@@ -67,7 +71,7 @@ export async function renderDashboard(user) {
   if (role === 'admin') {
     console.log('Отрисовываем Admin-панель');
     const adminModule = await import('./admin-panel.js');
-    app.append(adminModule.createAdminPanel(usersData));
+    app.append(adminModule.createAdminPanel(employees));
   }
 }
 
