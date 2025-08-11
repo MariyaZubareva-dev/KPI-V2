@@ -37,20 +37,24 @@ export async function renderDashboard(user) {
     location.reload();
   });
   toolbar.appendChild(logoutBtn);
-
   app.appendChild(toolbar);
 
   // Контейнер панели сотрудника (только для employee)
   const employeeSection = document.createElement('section');
   employeeSection.id = 'employee-section';
-  if (role === 'employee') app.appendChild(employeeSection);
 
   // Общие разделы страницы
   const deptSection    = document.createElement('section'); deptSection.id    = 'dept-section';
   const leaderWeekSec  = document.createElement('section'); leaderWeekSec.id  = 'leader-week';
   const leaderMonthSec = document.createElement('section'); leaderMonthSec.id = 'leader-month';
   const tableSection   = document.createElement('section'); tableSection.id   = 'users-table';
-  app.append(deptSection, leaderWeekSec, leaderMonthSec, tableSection);
+
+  // Вкладываем секции в DOM: для employee — без общего deptSection (чтобы не дублировать)
+  if (role === 'employee') {
+    app.append(employeeSection, leaderWeekSec, leaderMonthSec, tableSection);
+  } else {
+    app.append(deptSection, leaderWeekSec, leaderMonthSec, tableSection);
+  }
 
   // Лоадер
   const loader = createLoader('Загружаем данные…');
@@ -130,25 +134,26 @@ export async function renderDashboard(user) {
     const personalMonthPercent = Math.min(100, Math.round((personalMonthPoints / perUserMaxMonth) * 100));
     const deptMonthPercent     = Math.min(100, Math.round(Number(deptData?.monthPercent || 0)));
 
+    // 1) Сначала — прогресс отдела (месяц)
+    const deptBlock = document.createElement('div');
+    const h4d = document.createElement('h4');
+    h4d.textContent = 'Прогресс отдела — месяц (текущий)';
+    deptBlock.append(h4d, createProgressBar(deptMonthPercent, 'department'));
+    employeeSection.append(deptBlock);
+
+    // 2) Затем — два личных прогресс-бара (неделя/месяц)
     const grid = document.createElement('div');
     grid.className = 'row g-4';
 
-    // Личный — неделя
     const colWeek = document.createElement('div'); colWeek.className = 'col-12 col-md-6';
     const h4w = document.createElement('h4'); h4w.textContent = 'Ваш прогресс — неделя (текущая)';
     colWeek.append(h4w, createProgressBar(personalWeekPercent, 'user'));
 
-    // Личный — месяц
     const colMonth = document.createElement('div'); colMonth.className = 'col-12 col-md-6';
     const h4m = document.createElement('h4'); h4m.textContent = 'Ваш прогресс — месяц (текущий)';
     colMonth.append(h4m, createProgressBar(personalMonthPercent, 'user'));
 
-    // Отдел — месяц
-    const colDept = document.createElement('div'); colDept.className = 'col-12';
-    const h4d = document.createElement('h4'); h4d.textContent = 'Прогресс отдела — месяц (текущий)';
-    colDept.append(h4d, createProgressBar(deptMonthPercent, 'department'));
-
-    grid.append(colWeek, colMonth, colDept);
+    grid.append(colWeek, colMonth);
     employeeSection.append(grid);
   }
 
@@ -172,16 +177,18 @@ export async function renderDashboard(user) {
 
     lastEmployees = employees;
 
-    // Панель сотрудника
+    // Панель сотрудника (включает департамент сверху)
     if (role === 'employee') {
       renderEmployeePanel({ deptData, usersArr });
     }
 
-    // 1) Прогресс отдела (месяц)
-    deptSection.innerHTML = '';
-    const deptTitle = document.createElement('h3');
-    deptTitle.textContent = 'Прогресс отдела (месяц)';
-    deptSection.append(deptTitle, createProgressBar(Number(deptData?.monthPercent ?? 0), 'department'));
+    // 1) Прогресс отдела (месяц) — только для НЕ employee (чтобы не было дубля)
+    if (role !== 'employee') {
+      deptSection.innerHTML = '';
+      const deptTitle = document.createElement('h3');
+      deptTitle.textContent = 'Прогресс отдела (месяц)';
+      deptSection.append(deptTitle, createProgressBar(Number(deptData?.monthPercent ?? 0), 'department'));
+    }
 
     // 2) Лидерборды
     leaderWeekSec.innerHTML = '';
@@ -212,7 +219,7 @@ export async function renderDashboard(user) {
     await refreshDashboardData();
   });
 
-  // Если админ — подключаем админ-панель (передаём список сотрудников, если нужен)
+  // Если админ — подключаем админ-панель
   if (role === 'admin') {
     const adminModule = await import('./admin-panel.js');
     app.append(adminModule.createAdminPanel(lastEmployees));
