@@ -1,11 +1,4 @@
-// js/ui-components.js
-
-/**
- * Создаёт прогресс-бар с изображением при достижении порогов
- * @param {number} percent — процент заполнения (0–100)
- * @param {string} [size] — 'department' или 'user' (для CSS-классов)
- * @returns {HTMLElement}
- */
+// Простая крутилка
 export function createLoader(text = 'Загружаем данные…') {
   const box = document.createElement('div');
   box.className = 'd-flex align-items-center gap-2 my-3';
@@ -16,14 +9,13 @@ export function createLoader(text = 'Загружаем данные…') {
   return box;
 }
 
+// Прогресс-бар + персонаж
 export function createProgressBar(percent, size = 'department') {
   const p = Math.max(0, Math.min(100, Number(percent) || 0));
 
   const wrapper = document.createElement('div');
-  // горизонтально: бар сверху, персонаж снизу
   wrapper.classList.add(`progress-${size}`, 'mb-3');
 
-  // сам прогресс-бар
   const bar = document.createElement('div');
   bar.classList.add('progress');
 
@@ -36,15 +28,13 @@ export function createProgressBar(percent, size = 'department') {
   barInner.setAttribute('aria-valuemax', '100');
   bar.appendChild(barInner);
 
-  // Ряд с персонажем ПОД баром, выравниваем по концу закрашенной части:
-  // делаем "дорожку" шириной = процент, и выравниваем контент вправо
   const charRow = document.createElement('div');
-  charRow.classList.add('kpi-char-row'); // для отступов
+  charRow.classList.add('kpi-char-row');
 
   const track = document.createElement('div');
   track.classList.add('kpi-char-track');
-  track.style.width = `${p}%`;     // <- позиционирует по концу прогресса
-  track.style.textAlign = 'right'; // <- иконка прижимается к правому краю дорожки
+  track.style.width = `${p}%`;
+  track.style.textAlign = 'right';
 
   const img = createCharacterImage(p);
   track.appendChild(img);
@@ -55,12 +45,11 @@ export function createProgressBar(percent, size = 'department') {
 }
 
 function barClassByPercent(p) {
-  if (p < 30) return 'bar-critical'; // красный
-  if (p < 50) return 'bar-30';       // 30–49
-  if (p < 70) return 'bar-50';       // 50–69
-  return 'bar-70';                   // ≥70
+  if (p < 30) return 'bar-critical';
+  if (p < 50) return 'bar-30';
+  if (p < 70) return 'bar-50';
+  return 'bar-70';
 }
-
 
 function createCharacterImage(percent) {
   const img = document.createElement('img');
@@ -71,24 +60,23 @@ function createCharacterImage(percent) {
   img.loading = 'lazy';
 
   if (percent < 30) {
-    img.src = './images/krosh.png';                   // 0–29
+    img.src = './images/krosh.png';
     img.title = 'Старт (0–29)';
   } else if (percent < 50) {
-    img.src = './images/kopatych.png';                // 30–49
+    img.src = './images/kopatych.png';
     img.title = 'Зима впроголодь (≥30)';
   } else if (percent < 70) {
-    img.src = './images/karkarych-sovunya.png';       // 50–69
+    img.src = './images/karkarych-sovunya.png';
     img.title = 'Минимум, чтобы выжить (≥50)';
   } else {
-    img.src = './images/nyusha.png';                  // ≥70
+    img.src = './images/nyusha.png';
     img.title = 'Изобилие (≥70)';
   }
 
-  // Аккуратный фолбэк: если файла нет — показываем эмодзи, но место и клик сохраняются
   img.onerror = () => {
     const fallback = document.createElement('span');
     fallback.style.fontSize = '28px';
-    if (percent < 30)      fallback.textContent = '🐰'; // Крош
+    if (percent < 30)      fallback.textContent = '🐰';
     else if (percent < 50) fallback.textContent = '🥕';
     else if (percent < 70) fallback.textContent = '🍵';
     else                   fallback.textContent = '👑';
@@ -98,12 +86,7 @@ function createCharacterImage(percent) {
   return img;
 }
 
-
-/**
- * Создаёт HTML-таблицу сотрудников и их баллов
- * @param {Array<{name: string, week: number, month: number}>} users
- * @returns {HTMLElement}
- */
+// Таблица сотрудников
 export function createUsersTable(users) {
   if (!Array.isArray(users) || users.length === 0) {
     const info = document.createElement('div');
@@ -140,12 +123,7 @@ export function createUsersTable(users) {
   return table;
 }
 
-/**
- * Создаёт блок ТОП-3 лидеров для заданного периода
- * @param {Array<{name: string, week: number, month: number}>} users
- * @param {'week'|'month'} period
- * @returns {HTMLElement}
- */
+// ТОП-3
 export function createLeaderboard(users, period = 'week') {
   const safe = Array.isArray(users) ? users : [];
   const sorted = safe

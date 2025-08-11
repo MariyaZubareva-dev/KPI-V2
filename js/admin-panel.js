@@ -1,23 +1,14 @@
-// js/admin-panel.js
-
 import { recordKPI, getProgress, logEvent } from './api.js';
 
-/**
- * Создаёт Admin-панель для отметок KPI
- * @param {Array<{id: string, name: string}>} usersData
- * @returns {HTMLElement}
- */
 export function createAdminPanel(usersData) {
   const container = document.createElement('section');
   container.id = 'admin-panel';
   container.classList.add('mt-5');
 
-  // Заголовок
   const title = document.createElement('h3');
   title.textContent = 'Admin-панель: отметка KPI';
   container.appendChild(title);
 
-  // Селектор пользователей
   const select = document.createElement('select');
   select.id = 'user-select';
   select.classList.add('form-select', 'mb-3');
@@ -29,17 +20,14 @@ export function createAdminPanel(usersData) {
   });
   container.appendChild(select);
 
-  // Контейнер для списка KPI
   const kpiList = document.createElement('div');
   kpiList.id = 'kpi-list';
   container.appendChild(kpiList);
 
-  // Обработчик смены пользователя
   select.addEventListener('change', () => {
     loadKpisForUser(select.value, kpiList);
   });
 
-  // Инициално загрузим для первого пользователя
   if (usersData.length) {
     select.value = select.options[0].value;
     loadKpisForUser(select.value, kpiList);
@@ -48,19 +36,12 @@ export function createAdminPanel(usersData) {
   return container;
 }
 
-/**
- * Загружает и рендерит список KPI для пользователя
- * @param {string} userID
- * @param {HTMLElement} container
- */
 async function loadKpisForUser(userID, container) {
   container.innerHTML = 'Загрузка KPI…';
 
-  // Получаем прогресс по конкретному пользователю
   const res = await getProgress('user', userID);
-  const kpis = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+  const kpis = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
 
-  // Рендерим чек-боксы
   container.innerHTML = '';
   kpis.forEach(kpi => {
     const label = document.createElement('label');
@@ -74,24 +55,21 @@ async function loadKpisForUser(userID, container) {
     `;
     const checkbox = label.querySelector('input');
     checkbox.addEventListener('change', async () => {
-      checkbox.disabled = true;
       try {
-        await recordKPI({ 
-          userID, 
-          kpiId: kpi.KPI_ID, 
-          score: kpi.weight 
-        });
+        checkbox.disabled = true;
+        await recordKPI({ userID, kpiId: kpi.KPI_ID, score: kpi.weight });
+        await loadKpisForUser(userID, container);
         await logEvent('kpi_recorded', {
           userID,
-          details: { kpiId: kpi.KPI_ID, score: kpi.weight }
+          kpiId: kpi.KPI_ID,
+          score: kpi.weight
         });
-        await loadKpisForUser(userID, container); // перерисуем список
-        await logEvent('kpi_recorded', { userID, kpiId: kpi.KPI_ID, weight: kpi.weight });
-        window.location.reload();                  // обновим дашборд
-      } catch (err) {
-        console.error('Ошибка записи KPI:', err);
-        alert('Не удалось записать KPI');
+        // Обновим общий дашборд простым способом
+        window.location.reload();
+      } catch (e) {
+        console.error('Ошибка записи KPI:', e);
         checkbox.disabled = false;
+        alert('Не удалось записать KPI');
       }
     });
     container.appendChild(label);
