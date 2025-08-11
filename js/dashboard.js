@@ -11,8 +11,8 @@ export async function renderDashboard(user) {
   const role     = String(user?.role || '').toLowerCase();
   const app      = document.getElementById('app');
 
-  // очистка
-  app.innerHTML = '';
+  // Полная очистка контейнера
+  if (app) app.innerHTML = '';
 
   // Заголовок + logout
   const title = document.createElement('h2');
@@ -34,7 +34,7 @@ export async function renderDashboard(user) {
 
   app.append(toolbar);
 
-  // лоадер
+  // Лоадер
   const loader = createLoader('Загружаем данные…');
   app.append(loader);
 
@@ -42,26 +42,36 @@ export async function renderDashboard(user) {
     console.log('renderDashboard, user:', user);
     console.log('renderDashboard, role:', role);
 
-    // Получаем данные по отделу и пользователям
+    // 1) Получаем данные по отделу и пользователям
     const deptRes  = await apiGetProgress('department');
     const usersRes = await apiGetProgress('users');
 
-    // снимаем лоадер только после получения данных
     loader.remove();
 
     console.log('RAW deptRes:', deptRes);
     console.log('RAW usersRes:', usersRes);
 
-    // Разворачиваем backend-обёртку { success, data }
-    const deptData = deptRes?.data ?? deptRes;   // объект с percent-ами
-    const usersRaw = usersRes?.data ?? usersRes; // массив пользователей
+    // Разворачиваем ответы (с учётом обёртки { success, data })
+    const deptData = deptRes?.data ?? deptRes;
+    const usersRaw = usersRes?.data ?? usersRes;
 
-    // Берём только сотрудников
-    const employees = Array.isArray(usersRaw)
-      ? usersRaw.filter(u => String(u.role || '').toLowerCase() === 'employee')
-      : [];
+    // 🛠 Нормализуем список пользователей из разных возможных форматов
+    const usersArr = Array.isArray(usersRaw)
+      ? usersRaw
+      : Array.isArray(usersRaw?.data)
+        ? usersRaw.data
+        : Array.isArray(usersRaw?.users)
+          ? usersRaw.users
+          : [];
 
-    // === 1) Прогресс отдела (месяц)
+    console.log('usersArr.length:', usersArr.length);
+    if (usersArr.length) console.log('usersArr[0] sample:', usersArr[0]);
+
+    // Берём только сотрудников; роль чистим от пробелов и приводим к нижнему регистру
+    const employees = usersArr.filter(u => String(u?.role ?? '').trim().toLowerCase() === 'employee');
+    console.log('employees.length:', employees.length);
+
+    // 2) Прогресс отдела (месяц)
     const deptSection = document.createElement('section');
     deptSection.id = 'dept-section';
 
@@ -73,7 +83,7 @@ export async function renderDashboard(user) {
     deptSection.append(createProgressBar(monthPercent, 'department'));
     app.append(deptSection);
 
-    // === 2) Лидерборды
+    // 3) Лидерборды
     const leaderWeek = document.createElement('section');
     leaderWeek.id = 'leader-week';
     const h4Week = document.createElement('h4');
@@ -88,7 +98,7 @@ export async function renderDashboard(user) {
     leaderMonth.append(h4Month, createLeaderboard(employees, 'month'));
     app.append(leaderMonth);
 
-    // === 3) Таблица пользователей
+    // 4) Таблица пользователей
     const tableSection = document.createElement('section');
     tableSection.id = 'users-table';
     const tableTitle = document.createElement('h4');
@@ -96,7 +106,7 @@ export async function renderDashboard(user) {
     tableSection.append(tableTitle, createUsersTable(employees));
     app.append(tableSection);
 
-    // === 4) Admin-панель — только если есть сотрудники
+    // 5) Admin-панель — только для админа и только если есть сотрудники
     if (role === 'admin') {
       if (employees.length) {
         console.log('Отрисовываем Admin-панель');
@@ -111,15 +121,15 @@ export async function renderDashboard(user) {
     try { await logEvent('dashboard_view', { email: user?.email || user?.Email }); } catch {}
 
   } catch (err) {
-    loader.remove();
+    try { loader.remove(); } catch {}
     console.error('Ошибка при рендере дашборда:', err);
     const alert = document.createElement('div');
     alert.className = 'alert alert-danger';
     alert.textContent = 'Не удалось загрузить дашборд. Подробности в консоли.';
     app.append(alert);
-    throw err; // прокинем выше, чтобы auth.js тоже увидел
+    throw err;
   }
 }
 
-// ВАЖНО: здесь НЕТ auto-инициализации по DOMContentLoaded.
-// Вызываем renderDashboard только из auth.js после успешного логина/проверки.
+// ⚠️ Здесь нет auto-инициализации по DOMContentLoaded.
+// Вызовите renderDashboard(user) только из auth.js после успешной авторизации.
