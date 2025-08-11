@@ -1,16 +1,12 @@
 // js/admin-panel.js
 import { recordKPI, getProgress, logEvent } from './api.js';
 
-const currentUser = (() => {
-  try { return JSON.parse(localStorage.getItem('user')) || null; } catch { return null; }
-})();
-
 /**
  * Создаёт Admin-панель для отметок KPI
- * @param {Array<{id: string|number, name: string, email?: string}>} usersData
+ * @param {Array<{id: string|number, name: string, Email?: string, email?: string}>} usersData
  * @returns {HTMLElement}
  */
-export function createAdminPanel(usersData = []) {
+export function createAdminPanel(usersData) {
   const container = document.createElement('section');
   container.id = 'admin-panel';
   container.classList.add('mt-5');
@@ -19,30 +15,30 @@ export function createAdminPanel(usersData = []) {
   title.textContent = 'Admin-панель: отметка KPI';
   container.appendChild(title);
 
-  // селектор сотрудников
+  // селектор пользователя
   const select = document.createElement('select');
   select.id = 'user-select';
   select.className = 'form-select mb-3';
   (usersData || []).forEach(u => {
     const option = document.createElement('option');
-    option.value = String(u.id || u.ID || u.Email);
+    option.value = u.id || u.ID || u.Email;
     option.textContent = u.name || u.Name || u.Email;
     select.append(option);
   });
   container.appendChild(select);
 
-  // место под KPI
+  // сюда рендерим список KPI
   const kpiList = document.createElement('div');
   kpiList.id = 'kpi-list';
   container.appendChild(kpiList);
 
-  // обработчики
+  // реакция на смену пользователя
   select.addEventListener('change', () => {
     loadKpisForUser(select.value, kpiList);
   });
 
   // первичная загрузка
-  if (usersData.length) {
+  if (select.options.length) {
     select.value = select.options[0].value;
     loadKpisForUser(select.value, kpiList);
   }
@@ -51,71 +47,78 @@ export function createAdminPanel(usersData = []) {
 }
 
 /**
- * Запрашивает KPI выбранного пользователя и рендерит список
- * @param {string} userID
+ * Загружает и рендерит список KPI для выбранного пользователя
+ * @param {string|number} userID
  * @param {HTMLElement} container
  */
 async function loadKpisForUser(userID, container) {
-  container.innerHTML = 'Загружаем KPI…';
+  container.innerHTML = 'Загрузка KPI…';
 
-  // Берём KPI за текущую неделю для отметок (как и прежде)
-  const res = await getProgress('user', userID);
-  const kpis = res?.data ?? res; // [{ KPI_ID, name, weight, done }]
+  try {
+    const raw = await getProgress('user', userID);
+    // API гарантирует массив KPI или обёртку {data:[]}
+    const kpis = Array.isArray(raw) ? raw : (raw?.data ?? []);
 
-  container.innerHTML = '';
-  (kpis || []).sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0)).forEach(kpi => {
-    const wrap = document.createElement('label');
-    wrap.className = 'd-flex align-items-center gap-2 mb-2';
+    container.innerHTML = '';
 
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.dataset.kpiId = String(kpi.KPI_ID);
-    cb.dataset.weight = String(kpi.weight ?? 0);
-    cb.disabled = !!kpi.done;
-    cb.checked = !!kpi.done;
+    // кто ставит отметку (для бэкенд-авторизации)
+    const current = JSON.parse(localStorage.getItem('user') || '{}');
+    const actorEmail = current.email || current.Email || '';
 
-    const text = document.createElement('span');
-    text.textContent = `${kpi.name} (${kpi.weight})`;
+    // сортировка по весу (убывание)
+    kpis
+      .slice()
+      .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
+      .forEach(kpi => {
+        const label = document.createElement('label');
+        label.className = 'd-block mb-2';
+        label.innerHTML = `
+          <input type="checkbox"
+                 ${kpi.done ? 'checked disabled' : ''}
+                 aria-label="Отметить KPI"
+          >
+          ${kpi.name} <span class="text-tertiary">(${kpi.weight})</span>
+        `;
 
-    wrap.append(cb, text);
-    container.appendChild(wrap);
+        const checkbox = label.querySelector('input');
+        checkbox.addEventListener('change', async () => {
+          checkbox.disabled = true;
+          try {
+            await recordKPI({
+              userID,
+              kpiId: kpi.KPI_ID,
+              score: kpi.weight,
+              actorEmail // ← ОБЯЗАТЕЛЬНО передаём
+            });
 
-    cb.addEventListener('change', async () => {
-      // мягкий блок — сразу блокируем, чтобы избежать дабл-кликов
-      cb.disabled = true;
+            await logEvent('kpi_recorded', {
+              userID,
+              kpiId: kpi.KPI_ID,
+              score: kpi.weight,
+              actorEmail
+            });
 
-      try {
-        // 1) пишем KPI
-        await recordKPI({
-          userID,
-          kpiId: kpi.KPI_ID,
-          score: kpi.weight,
-          date: undefined // сегодня
+            // перерисовываем список KPI
+            await loadKpisForUser(userID, container);
+          } catch (err) {
+            console.error('Ошибка записи KPI:', err);
+            alert('Не удалось записать KPI. Подробности — в консоли.');
+            checkbox.checked = false;
+            checkbox.disabled = false;
+          }
         });
 
-        // 2) логируем событие (с указанием, кто отметил)
-        try {
-          await logEvent('kpi_recorded', {
-            userID,
-            kpiId: kpi.KPI_ID,
-            score: kpi.weight,
-            actorEmail: currentUser?.email || currentUser?.Email || ''
-          });
-        } catch {}
+        container.appendChild(label);
+      });
 
-        // 3) локально перерисовываем список KPI (актуализируем "done")
-        await loadKpisForUser(userID, container);
-
-        // 4) триггерим событие для дашборда — он сам обновит метрики/таблицы
-        window.dispatchEvent(new CustomEvent('kpi:recorded', {
-          detail: { userID, kpiId: kpi.KPI_ID, score: kpi.weight }
-        }));
-      } catch (err) {
-        console.error('Ошибка записи KPI:', err);
-        cb.disabled = false;
-        cb.checked = false;
-        alert('Не удалось записать KPI. Подробности — в консоли.');
-      }
-    });
-  });
+    if (!kpis.length) {
+      const empty = document.createElement('div');
+      empty.className = 'text-secondary';
+      empty.textContent = 'Для пользователя нет KPI.';
+      container.appendChild(empty);
+    }
+  } catch (err) {
+    console.error('Ошибка загрузки KPI пользователя:', err);
+    container.innerHTML = '<div class="text-danger">Не удалось загрузить KPI.</div>';
+  }
 }

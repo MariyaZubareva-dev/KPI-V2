@@ -69,6 +69,7 @@ export async function recordKPI(userIDOrObj, kpiId, score, date) {
   } else {
     userID = userIDOrObj;
   }
+  console.log('[recordKPI] actorEmail =', actorEmail);
 
   // если actorEmail не передали явно — возьмём из localStorage
   if (!actorEmail) {
