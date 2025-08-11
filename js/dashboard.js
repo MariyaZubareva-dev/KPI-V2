@@ -1,249 +1,124 @@
 // js/dashboard.js
-import {
-  getProgress as apiGetProgress,
-  getUsersAggregate,
-  getUserKPIs,
-  logEvent
-} from './api.js';
+import { getProgress as apiGetProgress, logEvent } from './api.js';
+import { createProgressBar, createUsersTable, createLeaderboard, createLoader } from './ui-components.js';
 
-import {
-  createProgressBar,
-  createUsersTable,
-  createLeaderboard,
-  createLoader,
-  createKPIList
-} from './ui-components.js';
-
-/** Форматируем диапазон дат подписи "за прошлую неделю" */
-function formatRange(start, end) {
-  const pad = n => String(n).padStart(2, '0');
-  const s = `${pad(start.getDate())}.${pad(start.getMonth() + 1)}`;
-  const e = `${pad(end.getDate())}.${pad(end.getMonth() + 1)}`;
-  return `за прошлую неделю (Пн ${s} — Вс ${e})`;
-}
-
-/** Границы последней полной недели Пн–Вс относительно сегодня */
-function getLastFullWeekBounds() {
+/**
+ * Вычисляем подпись прошлой недели: "за прошлую неделю (Пн DD.MM — Вс DD.MM)"
+ */
+function getLastWeekLabel() {
   const now = new Date();
-  const day = now.getDay(); // 0..6, 0 — воскресенье
-  // найдем понедельник текущей недели
+  const day = now.getDay(); // 0=Sun..6=Sat
   const diffToMonday = (day === 0 ? -6 : 1 - day);
   const mondayThis = new Date(now);
   mondayThis.setDate(now.getDate() + diffToMonday);
-  mondayThis.setHours(0,0,0,0);
+  const mondayPrev = new Date(mondayThis);
+  mondayPrev.setDate(mondayThis.getDate() - 7);
+  const sundayPrev = new Date(mondayPrev);
+  sundayPrev.setDate(mondayPrev.getDate() + 6);
 
-  // прошлый понедельник/воскресенье
-  const start = new Date(mondayThis);
-  start.setDate(start.getDate() - 7);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  end.setHours(23,59,59,999);
-  return { start, end };
-}
+  const fmt = (d) =>
+    `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}`;
 
-/** Находим запись пользователя по email в агрегате users */
-function findUserRecordByEmail(users, email) {
-  if (!Array.isArray(users)) return null;
-  const norm = (e) => String(e || '').trim().toLowerCase();
-  return users.find(u => norm(u.email) === norm(email));
-}
-
-/** Рендер панели сотрудника */
-async function renderEmployeePanel(app, user, usersCurrent, deptData) {
-  const me = findUserRecordByEmail(usersCurrent, user.email || user.Email);
-  if (!me) {
-    const warn = document.createElement('div');
-    warn.className = 'alert alert-warning';
-    warn.textContent = 'Не нашли вашу запись в списке сотрудников. Попросите администратора сверить Email в листе Users.';
-    app.append(warn);
-    return;
-  }
-
-  // === ВЕРХНИЙ БАР: Прогресс отдела (месяц)
-  const deptTop = document.createElement('section');
-  deptTop.className = 'mb-4';
-  const deptH3 = document.createElement('h3');
-  deptH3.textContent = 'Прогресс отдела (месяц)';
-  deptH3.className = 'mb-3';
-  const deptMonthPercent = Number(deptData?.monthPercent ?? 0);
-  deptTop.append(deptH3, createProgressBar(deptMonthPercent, 'department'));
-  app.append(deptTop);
-
-  // Подготовим личные проценты (корректная шкала)
-  const employeesCount   = Number(deptData?.employeesCount ?? 0);
-  const maxWeekDept      = Number(deptData?.maxWeek ?? 0);      // суммарный макс на департамент за неделю
-  const weeksInMonth     = Number(deptData?.weeksInMonth ?? 4); // из бэкенда
-  const maxWeekPersonal  = (employeesCount > 0) ? (maxWeekDept / employeesCount) : 0;
-  const maxMonthPersonal = maxWeekPersonal * weeksInMonth;
-
-  const myWeekPercent  = maxWeekPersonal  > 0 ? Math.min(100, Math.round((me.week  / maxWeekPersonal)  * 100)) : 0;
-  const myMonthPercent = maxMonthPersonal > 0 ? Math.min(100, Math.round((me.month / maxMonthPersonal) * 100)) : 0;
-
-  // Заголовок панели сотрудника
-  const h3 = document.createElement('h3');
-  h3.textContent = `Здравствуйте, ${user.name || user.Name || 'сотрудник'}`;
-  h3.className = 'mb-3';
-  app.append(h3);
-
-  // Личные прогресс-бары: неделя (текущая) и месяц (текущий)
-  const stats = document.createElement('section');
-  stats.className = 'mb-4';
-
-  const h4 = document.createElement('h4');
-  h4.textContent = 'Ваш прогресс';
-  h4.className = 'mb-2';
-  stats.append(h4);
-
-  const row = document.createElement('div');
-  row.className = 'row g-3';
-
-  // Неделя (текущая)
-  const colWeek = document.createElement('div');
-  colWeek.className = 'col-12 col-md-6';
-  const weekBox = document.createElement('div');
-  const weekTitle = document.createElement('div');
-  weekTitle.className = 'mb-1 text-secondary';
-  weekTitle.textContent = 'Неделя (текущая)';
-  weekBox.append(weekTitle, createProgressBar(myWeekPercent, 'user'));
-  colWeek.append(weekBox);
-
-  // Месяц (текущий) — ЛИЧНЫЙ
-  const colMonth = document.createElement('div');
-  colMonth.className = 'col-12 col-md-6';
-  const monthBox = document.createElement('div');
-  const monthTitle = document.createElement('div');
-  monthTitle.className = 'mb-1 text-secondary';
-  monthTitle.textContent = 'Месяц (текущий, личный)';
-  monthBox.append(monthTitle, createProgressBar(myMonthPercent, 'user'));
-  colMonth.append(monthBox);
-
-  row.append(colWeek, colMonth);
-  stats.append(row);
-  app.append(stats);
-
-  // Список KPI с переключателем периода
-  const kpiSection = document.createElement('section');
-  const kpiHeader = document.createElement('div');
-  kpiHeader.className = 'd-flex align-items-center justify-content-between mb-2';
-
-  const kpiTitle = document.createElement('h4');
-  kpiTitle.textContent = 'Ваши KPI';
-  kpiTitle.className = 'mb-0';
-
-  const toggles = document.createElement('div');
-  toggles.className = 'btn-group btn-group-sm';
-  const btnThis = document.createElement('button');
-  btnThis.className = 'btn btn-primary';
-  btnThis.textContent = 'Текущая неделя';
-  btnThis.dataset.period = 'this_week';
-
-  const btnPrev = document.createElement('button');
-  btnPrev.className = 'btn btn-outline-primary';
-  btnPrev.textContent = 'Прошлая неделя';
-  btnPrev.dataset.period = 'prev_week';
-
-  toggles.append(btnThis, btnPrev);
-  kpiHeader.append(kpiTitle, toggles);
-
-  const kpiListWrap = document.createElement('div');
-  kpiListWrap.className = 'mt-2';
-
-  kpiSection.append(kpiHeader, kpiListWrap);
-  app.append(kpiSection);
-
-  // загрузка KPI и отрисовка
-  async function loadAndRender(period = 'this_week') {
-    kpiListWrap.innerHTML = '';
-    const loader = createLoader('Загружаем KPI…');
-    kpiListWrap.append(loader);
-    try {
-      const kpis = await getUserKPIs(me.id, period);
-      loader.remove();
-      kpiListWrap.append(createKPIList(kpis));
-    } catch (e) {
-      loader.remove();
-      const err = document.createElement('div');
-      err.className = 'alert alert-danger';
-      err.textContent = 'Не удалось загрузить KPI. Подробности в консоли.';
-      kpiListWrap.append(err);
-      console.error(e);
-    }
-  }
-
-  // initial
-  await loadAndRender('this_week');
-
-  // переключение периодов
-  function setActive(period) {
-    if (period === 'this_week') {
-      btnThis.className = 'btn btn-primary';
-      btnPrev.className = 'btn btn-outline-primary';
-    } else {
-      btnThis.className = 'btn btn-outline-primary';
-      btnPrev.className = 'btn btn-primary';
-    }
-  }
-  btnThis.addEventListener('click', async () => { setActive('this_week'); await loadAndRender('this_week'); });
-  btnPrev.addEventListener('click', async () => { setActive('prev_week');  await loadAndRender('prev_week');  });
-}
-
-/** Рендер панели наблюдателя */
-function renderObserverPanel(app, deptData, employeesPrevWeek, employeesCurrent) {
-  // 1) Прогресс отдела (месяц)
-  const deptSection = document.createElement('section');
-  const h3 = document.createElement('h3');
-  h3.textContent = 'Прогресс отдела (месяц)';
-  h3.className = 'mb-3';
-  deptSection.append(h3, createProgressBar(Number(deptData?.monthPercent ?? 0), 'department'));
-  app.append(deptSection);
-
-  // 2) ТОП-3 за прошлую неделю
-  const topSection = document.createElement('section');
-  topSection.id = 'leader-week';
-  const h4 = document.createElement('h4');
-  h4.textContent = 'ТОП-3';
-  const cap = document.createElement('div');
-  cap.className = 'text-terтиary small mb-2';
-  const { start, end } = getLastFullWeekBounds();
-  cap.textContent = formatRange(start, end);
-  topSection.append(h4, cap, createLeaderboard(employeesPrevWeek, 'week'));
-  app.append(topSection);
-
-  // 3) Таблица сотрудников и баллы (read-only)
-  const tableSection = document.createElement('section');
-  const tTitle = document.createElement('h4');
-  tTitle.textContent = 'Сотрудники и баллы';
-  tTitle.className = 'mb-2';
-  tableSection.append(tTitle, createUsersTable(employeesCurrent));
-  app.append(tableSection);
+  return `за прошлую неделю (Пн ${fmt(mondayPrev)} — Вс ${fmt(sundayPrev)})`;
 }
 
 /**
- * Главный рендер дашборда
+ * Перерисовывает основные блоки дашборда (без полной перезагрузки страницы)
+ * - Прогресс отдела (месяц)
+ * - ТОП-3 за прошлую неделю
+ * - Таблица сотрудников (текущая неделя/месяц)
+ */
+async function refreshDashboardSections() {
+  const deptSection   = document.getElementById('dept-section');
+  const leaderWeekSec = document.getElementById('leader-week');
+  const usersTableSec = document.getElementById('users-table');
+
+  if (deptSection)   deptSection.innerHTML   = '';
+  if (leaderWeekSec) leaderWeekSec.innerHTML = '';
+  if (usersTableSec) usersTableSec.innerHTML = '';
+
+  // Лоадеры на время запросов
+  const loaders = {
+    dept: createLoader('Обновляем прогресс отдела…'),
+    week: createLoader('Обновляем ТОП-3…'),
+    table: createLoader('Обновляем таблицу…'),
+  };
+  if (deptSection)   deptSection.append(loaders.dept);
+  if (leaderWeekSec) leaderWeekSec.append(loaders.week);
+  if (usersTableSec) usersTableSec.append(loaders.table);
+
+  // Три запроса параллельно
+  const [deptRes, usersNowRes, usersPrevWeekRes] = await Promise.all([
+    apiGetProgress('department'),
+    apiGetProgress('users'),
+    apiGetProgress('users_lastweek'),
+  ]);
+
+  // Снимаем лоадеры
+  loaders.dept.remove();
+  loaders.week.remove();
+  loaders.table.remove();
+
+  const deptData = deptRes?.data ?? deptRes; // объект
+  const usersNow = (usersNowRes?.data ?? usersNowRes) || []; // массив текущих
+  const usersPw  = (usersPrevWeekRes?.data ?? usersPrevWeekRes) || []; // массив прошлой недели
+
+  // Фильтруем сотрудников (employee)
+  const employeesNow = Array.isArray(usersNow)
+    ? usersNow.filter(u => String(u.role || '').toLowerCase() === 'employee')
+    : [];
+  const employeesPw = Array.isArray(usersPw)
+    ? usersPw.filter(u => String(u.role || '').toLowerCase() === 'employee')
+    : [];
+
+  // === Прогресс отдела (месяц)
+  if (deptSection) {
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Прогресс отдела (месяц)';
+    const bar = createProgressBar(Number(deptData?.monthPercent ?? 0), 'department');
+    deptSection.append(h3, bar);
+  }
+
+  // === ТОП-3 за прошлую неделю + подпись
+  if (leaderWeekSec) {
+    const h4 = document.createElement('h4');
+    h4.textContent = 'ТОП-3 за неделю';
+    const small = document.createElement('div');
+    small.className = 'text-tertiary mb-2';
+    small.textContent = getLastWeekLabel();
+    leaderWeekSec.append(h4, small, createLeaderboard(employeesPw, 'week'));
+  }
+
+  // === Таблица сотрудников (текущая неделя/месяц)
+  if (usersTableSec) {
+    const h4 = document.createElement('h4');
+    h4.textContent = 'Сотрудники и баллы';
+    usersTableSec.append(h4, createUsersTable(employeesNow));
+  }
+}
+
+/**
+ * Рендер дашборда по роли
  * @param {{ID?: string, Email?: string, role: string, Name?: string, name?: string, email?: string}} user
  */
 export async function renderDashboard(user) {
-  const role = String(user?.role || '').toLowerCase();
-  const app  = document.getElementById('app');
+  const userName = user?.Name || user?.name || user?.Email || user?.email || 'Пользователь';
+  const role     = String(user?.role || '').toLowerCase();
+  const app      = document.getElementById('app');
+
+  // очистка
   app.innerHTML = '';
-  if (!window.__kpiRecordedBound__) {
-    window.addEventListener('kpi:recorded', async () => {
-      // Перерисуем дашборд без перезагрузки страницы
-      try { await renderDashboard(user); } catch (e) { console.error(e); }
-    });
-    window.__kpiRecordedBound__ = true;
-  }
 
   // Заголовок + logout
   const title = document.createElement('h2');
-  title.textContent = `Добро пожаловать, ${user?.Name || user?.name || user?.Email || user?.email || 'Пользователь'}!`;
+  title.textContent = `Добро пожаловать, ${userName}!`;
 
   const toolbar = document.createElement('div');
   toolbar.className = 'd-flex justify-content-between align-items-center mb-3';
   toolbar.appendChild(title);
 
   const logoutBtn = document.createElement('button');
-  logoutBtn.className = 'btn btn-outline-primary btn-sm';
+  logoutBtn.className = 'btn btn-outline-secondary btn-sm';
   logoutBtn.textContent = 'Выйти';
   logoutBtn.addEventListener('click', async () => {
     try { await logEvent('logout', { email: user?.email || user?.Email }); } catch {}
@@ -251,73 +126,34 @@ export async function renderDashboard(user) {
     location.reload();
   });
   toolbar.appendChild(logoutBtn);
+
   app.append(toolbar);
 
-  const loader = createLoader('Загружаем данные…');
-  app.append(loader);
+  // Разделы-контейнеры (пустые, наполним при refresh)
+  const deptSection   = document.createElement('section'); deptSection.id = 'dept-section';
+  const leaderWeekSec = document.createElement('section'); leaderWeekSec.id = 'leader-week';
+  const usersTableSec = document.createElement('section'); usersTableSec.id = 'users-table';
 
+  app.append(deptSection, leaderWeekSec, usersTableSec);
+
+  // Первая загрузка данных
+  const firstLoader = createLoader('Загружаем данные…');
+  app.append(firstLoader);
   try {
-    // Данные, нужные всем
-    const [deptRes, usersCurrent, usersPrevWeek] = await Promise.all([
-      apiGetProgress('department'),
-      getUsersAggregate('this_week'),
-      getUsersAggregate('prev_week'),
-    ]);
-
-    loader.remove();
-
-    const deptData = deptRes?.data ?? deptRes;
-    const employeesCurrent = (Array.isArray(usersCurrent) ? usersCurrent : []).filter(u => String(u.role || '').toLowerCase() === 'employee');
-    const employeesPrev = (Array.isArray(usersPrevWeek) ? usersPrevWeek : []).filter(u => String(u.role || '').toLowerCase() === 'employee');
-
-    // Ветка по ролям
-    if (role === 'employee') {
-      await renderEmployeePanel(app, user, usersCurrent, deptData);
-    } else if (role === 'observer') {
-      renderObserverPanel(app, deptData, employeesPrev, employeesCurrent);
-    } else if (role === 'admin') {
-      // 1) Прогресс отдела (месяц)
-      const deptSection = document.createElement('section');
-      const h3Dept = document.createElement('h3');
-      h3Dept.textContent = 'Прогресс отдела (месяц)';
-      h3Dept.className = 'mb-3';
-      deptSection.append(h3Dept, createProgressBar(Number(deptData?.monthPercent ?? 0), 'department'));
-      app.append(deptSection);
-
-      // 2) ТОП-3 за прошлую неделю
-      const leaderWeek = document.createElement('section');
-      const h4Week = document.createElement('h4');
-      h4Week.textContent = 'ТОП-3';
-      const cap = document.createElement('div');
-      cap.className = 'text-tertiary small mb-2';
-      const { start, end } = getLastFullWeekBounds();
-      cap.textContent = formatRange(start, end);
-      leaderWeek.append(h4Week, cap, createLeaderboard(employeesPrev, 'week'));
-      app.append(leaderWeek);
-
-      // 3) Таблица сотрудников
-      const tableSection = document.createElement('section');
-      const tableTitle = document.createElement('h4');
-      tableTitle.textContent = 'Сотрудники и баллы';
-      tableTitle.className = 'mb-2';
-      tableSection.append(tableTitle, createUsersTable(employeesCurrent));
-      app.append(tableSection);
-
-      // 4) Admin-панель
-      if (employeesCurrent.length) {
-        const adminModule = await import('./admin-panel.js');
-        app.append(adminModule.createAdminPanel(employeesCurrent));
-      }
-    }
-
+    await refreshDashboardSections();
     try { await logEvent('dashboard_view', { email: user?.email || user?.Email }); } catch {}
-  } catch (err) {
-    loader.remove();
-    console.error('Ошибка при рендере дашборда:', err);
-    const alert = document.createElement('div');
-    alert.className = 'alert alert-danger';
-    alert.textContent = 'Не удалось загрузить дашборд. Подробности в консоли.';
-    app.append(alert);
-    throw err;
+  } finally {
+    firstLoader.remove();
+  }
+
+  // Только для админа — подключаем панель и слушаем событие о записи KPI
+  if (role === 'admin') {
+    const adminModule = await import('./admin-panel.js');
+    app.append(adminModule.createAdminPanel([])); // сам модуль подхватит список из dashboard при инициализации
+
+    // Подписка: как только KPI записан — обновляем секции
+    window.addEventListener('kpi-updated', async () => {
+      await refreshDashboardSections();
+    }, { passive: true });
   }
 }

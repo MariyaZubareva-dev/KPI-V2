@@ -1,11 +1,6 @@
 // js/admin-panel.js
 import { recordKPI, getProgress, logEvent } from './api.js';
 
-/**
- * Создаёт Admin-панель для отметок KPI
- * @param {Array<{id: string|number, name: string, Email?: string, email?: string}>} usersData
- * @returns {HTMLElement}
- */
 export function createAdminPanel(usersData) {
   const container = document.createElement('section');
   container.id = 'admin-panel';
@@ -15,7 +10,6 @@ export function createAdminPanel(usersData) {
   title.textContent = 'Admin-панель: отметка KPI';
   container.appendChild(title);
 
-  // селектор пользователя
   const select = document.createElement('select');
   select.id = 'user-select';
   select.className = 'form-select mb-3';
@@ -27,17 +21,14 @@ export function createAdminPanel(usersData) {
   });
   container.appendChild(select);
 
-  // сюда рендерим список KPI
   const kpiList = document.createElement('div');
   kpiList.id = 'kpi-list';
   container.appendChild(kpiList);
 
-  // реакция на смену пользователя
   select.addEventListener('change', () => {
     loadKpisForUser(select.value, kpiList);
   });
 
-  // первичная загрузка
   if (select.options.length) {
     select.value = select.options[0].value;
     loadKpisForUser(select.value, kpiList);
@@ -46,26 +37,18 @@ export function createAdminPanel(usersData) {
   return container;
 }
 
-/**
- * Загружает и рендерит список KPI для выбранного пользователя
- * @param {string|number} userID
- * @param {HTMLElement} container
- */
 async function loadKpisForUser(userID, container) {
   container.innerHTML = 'Загрузка KPI…';
 
   try {
     const raw = await getProgress('user', userID);
-    // API гарантирует массив KPI или обёртку {data:[]}
     const kpis = Array.isArray(raw) ? raw : (raw?.data ?? []);
 
     container.innerHTML = '';
 
-    // кто ставит отметку (для бэкенд-авторизации)
     const current = JSON.parse(localStorage.getItem('user') || '{}');
     const actorEmail = current.email || current.Email || '';
 
-    // сортировка по весу (убывание)
     kpis
       .slice()
       .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
@@ -73,32 +56,24 @@ async function loadKpisForUser(userID, container) {
         const label = document.createElement('label');
         label.className = 'd-block mb-2';
         label.innerHTML = `
-          <input type="checkbox"
-                 ${kpi.done ? 'checked disabled' : ''}
-                 aria-label="Отметить KPI"
-          >
+          <input type="checkbox" ${kpi.done ? 'checked disabled' : ''}>
           ${kpi.name} <span class="text-tertiary">(${kpi.weight})</span>
         `;
-
         const checkbox = label.querySelector('input');
+
         checkbox.addEventListener('change', async () => {
           checkbox.disabled = true;
           try {
-            await recordKPI({
-              userID,
-              kpiId: kpi.KPI_ID,
-              score: kpi.weight,
-              actorEmail // ← ОБЯЗАТЕЛЬНО передаём
-            });
+            await recordKPI({ userID, kpiId: kpi.KPI_ID, score: kpi.weight, actorEmail });
 
-            await logEvent('kpi_recorded', {
-              userID,
-              kpiId: kpi.KPI_ID,
-              score: kpi.weight,
-              actorEmail
-            });
+            await logEvent('kpi_recorded', { userID, kpiId: kpi.KPI_ID, score: kpi.weight, actorEmail });
 
-            // перерисовываем список KPI
+            // Сообщаем дашборду, что данные изменились
+            window.dispatchEvent(new CustomEvent('kpi-updated', {
+              detail: { userID, kpiId: kpi.KPI_ID, score: kpi.weight }
+            }));
+
+            // Перерисовываем список KPI пользователя
             await loadKpisForUser(userID, container);
           } catch (err) {
             console.error('Ошибка записи KPI:', err);
