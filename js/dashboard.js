@@ -5,6 +5,21 @@ import { createProgressBar, createUsersTable, createLeaderboard, createLoader } 
  * Рендер дашборда по роли
  * @param {{ID?: string, Email?: string, role: string, Name?: string, name?: string, email?: string}} user
  */
+// utils наверху файла (или внутри renderDashboard перед использованием)
+function formatDM(d){
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return `${dd}.${mm}`;
+}
+function getLastFullWeekRange(){
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun..6=Sat
+  const daysSinceMon = (day + 6) % 7; // Mon=0
+  const thisMon = new Date(now); thisMon.setDate(now.getDate() - daysSinceMon); thisMon.setHours(0,0,0,0);
+  const lastMon = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7);
+  const lastSun = new Date(thisMon); lastSun.setDate(thisMon.getDate() - 1); lastSun.setHours(23,59,59,999);
+  return { start: lastMon, end: lastSun };
+}
 export async function renderDashboard(user) {
   const userName = user?.Name || user?.name || user?.Email || user?.email || 'Пользователь';
   const role     = String(user?.role || '').toLowerCase();
@@ -70,6 +85,10 @@ export async function renderDashboard(user) {
     leaderWeek.id = 'leader-week';
     const h4Week = document.createElement('h4');
     h4Week.textContent = 'ТОП-3 за неделю';
+    const cap = document.createElement('div');
+    cap.className = 'kpi-caption';
+    const { start, end } = getLastFullWeekRange();
+    cap.textContent = `за прошлую неделю (Пн ${formatDM(start)} — Вс ${formatDM(end)})`;
     leaderWeek.append(h4Week, createLeaderboard(employees, 'week'));
     app.append(leaderWeek);
 

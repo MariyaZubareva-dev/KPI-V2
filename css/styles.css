@@ -1,76 +1,155 @@
-/* Корневые переменные */
-:root {
-  /* Типографика — Desktop */
-  --font-sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
-  --fs-h0: 62px;   --lh-h0: 72px;
-  --fs-h1: 56px;   --lh-h1: 64px;
-  --fs-h2: 40px;   --lh-h2: 54px;
-  --fs-h3: 28px;   --lh-h3: 36px;
-  --fs-h4: 24px;   --lh-h4: 32px;
-  --fs-h5: 20px;   --lh-h5: 28px;
-  --fs-text-primary: 18px; --lh-text-primary: 32px;
-  --fs-text-secondary: 16px; --lh-text-secondary: 24px;
-  --fs-text-tertiary: 14px; --lh-text-tertiary: 20px;
-  --fs-text-small: 12px; --lh-text-small: 16px;
-  --fw-medium: 500;
-  --fw-regular: 400;
-  --fw-bold: 700;
+/* =========================
+   KPI UI — Design Tokens
+   ========================= */
+:root{
+  /* Font */
+  --ff-base: "Space Grotesk", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 
-  /* Фоновые цвета */
-  --bg-main-500: #5E5E5E;
-  --bg-main-400: #999999;
-  --bg-main-300: #ADADAD;
-  --bg-main-200: #C0C0C0;
-  --bg-main-100: #F1F1F1;
+  /* Text colors */
+  --text-primary: #191919;
+  --text-secondary: #5E5E5E;
+  --text-tertiary: #999999;
+  --text-quaternary: #ADADAD;
+  --text-white: #FFFFFF;
+
+  /* Backgrounds */
+  --bg-100: #F1F1F1;
   --bg-white: #FFFFFF;
-  --bg-black: #191919;
-  --bg-disabled: #F1F1F1;
 
-  /* Акценты */
+  /* Accent */
   --accent-electric: #0285FF;
   --accent-primary: #0051F9;
   --accent-primary-hover: #223DC3;
   --accent-secondary: #E6F0FF;
   --accent-secondary-hover: #D2E4FF;
 
-  /* Системные цвета */
-  --color-success: #36B37E;
-  --color-critical: #FF0404;
-  --color-link: #0057FF;
+  /* System */
+  --sys-success: #36B37E;
+  --sys-critical: #FF0404;
+  --link: #0057FF;
 
-  /* Текст */
-  --text-primary: #191919;
-  --text-secondary: #5E5E5E;
-  --text-tertiary: #999999;
-  --text-quaternary: #ADADAD;
-  --text-white: #FFFFFF;
-  --text-black: #191919;
-  --text-disabled: #F1F1F1;
+  /* Borders */
+  --border-weak: #E0E0E0; /* тонкая нейтральная линия */
+  --border-primary: #191919;
+
+  /* Typography (desktop) */
+  --h0-fs: 62px; --h0-lh: 72px; --h0-fw: 500;
+  --h1-fs: 56px; --h1-lh: 64px; --h1-fw: 500;
+  --h2-fs: 40px; --h2-lh: 54px; --h2-fw: 500;
+  --h3-fs: 28px; --h3-lh: 36px; --h3-fw: 500;
+  --h4-fs: 24px; --h4-lh: 32px; --h4-fw: 500;
+  --h5-fs: 20px; --h5-lh: 28px; --h5-fw: 500;
+
+  --text-primary-fs: 18px; --text-primary-lh: 32px; --text-primary-fw: 400;
+  --text-secondary-fs: 16px; --text-secondary-lh: 24px; --text-secondary-fw: 400;
+  --text-tertiary-fs: 14px; --text-tertiary-lh: 20px; --text-tertiary-fw: 400;
+  --text-small-fs: 12px; --text-small-lh: 16px; --text-small-fw: 400;
 }
-h1 { font-size: var(--fs-h1); line-height: var(--lh-h1); font-weight: var(--fw-medium); color: var(--text-primary); }
-h2 { font-size: var(--fs-h2); line-height: var(--lh-h2); font-weight: var(--fw-medium); color: var(--text-primary); }
-h3 { font-size: var(--fs-h3); line-height: var(--lh-h3); font-weight: var(--fw-medium); color: var(--text-primary); }
-h4 { font-size: var(--fs-h4); line-height: var(--lh-h4); font-weight: var(--fw-medium); color: var(--text-primary); }
-h5 { font-size: var(--fs-h5); line-height: var(--lh-h5); font-weight: var(--fw-medium); color: var(--text-primary); }
 
-.text-primary { font-size: var(--fs-text-primary); line-height: var(--lh-text-primary); font-weight: var(--fw-regular); color: var(--text-primary); }
-.text-secondary { font-size: var(--fs-text-secondary); line-height: var(--lh-text-secondary); font-weight: var(--fw-regular); color: var(--text-secondary); }
-.text-tertiary { font-size: var(--fs-text-tertiary); line-height: var(--lh-text-tertiary); font-weight: var(--fw-regular); color: var(--text-tertiary); }
-.text-small, .text-caption { font-size: var(--fs-text-small); line-height: var(--lh-text-small); font-weight: var(--fw-regular); color: var(--text-secondary); }
-.text-bold-primary { font-size: var(--fs-text-primary); line-height: var(--lh-text-primary); font-weight: var(--fw-bold); color: var(--text-primary); }
-.text-bold-secondary { font-size: var(--fs-text-secondary); line-height: var(--lh-text-secondary); font-weight: var(--fw-bold); color: var(--text-secondary); }
+/* Mobile overrides */
+@media (max-width: 576px){
+  :root{
+    --h0-fs: 40px; --h0-lh: 48px;
+    --h1-fs: 32px; --h1-lh: 40px;
+    --h2-fs: 28px; --h2-lh: 36px;
+    --h3-fs: 24px; --h3-lh: 32px;
+    --h4-fs: 20px; --h4-lh: 28px;
+    --h5-fs: 18px; --h5-lh: 24px;
+  }
+}
 
-/* Прогресс-бар: цвета по порогам */
-.progress .progress-bar.bar-critical { background-color: #FF0404; }  /* System Critical */
-.progress .progress-bar.bar-30      { background-color: #0285FF; }  /* Accent Eeletric 30–49 */
-.progress .progress-bar.bar-50      { background-color: #0051F9; }  /* Primary 50–69 */
-.progress .progress-bar.bar-70      { background-color: #36B37E; }  /* System Success ≥70 */
+/* Base */
+html, body{
+  font-family: var(--ff-base);
+  color: var(--text-primary);
+  background: var(--bg-white);
+}
 
-/* Ряд с персонажем под прогресс-баром */
-.kpi-char-row { margin-top: 8px; }
-.kpi-char-track { display: block; }        /* ширина дорожки управляет позицией иконки */
-.kpi-char-track img { vertical-align: top; }  /* чтобы не было «просвета» */
+/* Headings */
+h1{ font-size: var(--h1-fs); line-height: var(--h1-lh); font-weight: var(--h1-fw); margin-bottom: 16px; }
+h2{ font-size: var(--h2-fs); line-height: var(--h2-lh); font-weight: var(--h2-fw); margin-bottom: 16px; }
+h3{ font-size: var(--h3-fs); line-height: var(--h3-lh); font-weight: var(--h3-fw); margin-bottom: 12px; }
+h4{ font-size: var(--h4-fs); line-height: var(--h4-lh); font-weight: var(--h4-fw); margin-bottom: 8px; }
+h5{ font-size: var(--h5-fs); line-height: var(--h5-lh); font-weight: var(--h5-fw); margin-bottom: 8px; }
 
-#app h2 { margin: 0; }
+/* Text utility overrides to соответствовать гайду */
+.text-secondary{ color: var(--text-secondary) !important; }
+.text-tertiary{ color: var(--text-tertiary) !important; }
 
-.table td, .table th { vertical-align: middle; }
+/* Small caption */
+.kpi-caption{
+  font-size: var(--text-small-fs);
+  line-height: var(--text-small-lh);
+  font-weight: var(--text-small-fw);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* Links */
+a{ color: var(--link); text-decoration: none; }
+a:hover{ text-decoration: underline; }
+
+/* Buttons — override Bootstrap palette */
+.btn-primary{
+  --bs-btn-bg: var(--accent-primary);
+  --bs-btn-border-color: var(--accent-primary);
+  --bs-btn-hover-bg: var(--accent-primary-hover);
+  --bs-btn-hover-border-color: var(--accent-primary-hover);
+  --bs-btn-active-bg: var(--accent-primary-hover);
+  --bs-btn-active-border-color: var(--accent-primary-hover);
+  --bs-btn-disabled-bg: var(--accent-secondary);
+  --bs-btn-disabled-border-color: var(--accent-secondary);
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
+}
+
+.btn-outline-primary{
+  --bs-btn-color: var(--accent-primary);
+  --bs-btn-border-color: var(--accent-primary);
+  --bs-btn-hover-color: var(--accent-primary);
+  --bs-btn-hover-bg: var(--accent-secondary);
+  --bs-btn-hover-border-color: var(--accent-primary);
+}
+
+.btn-secondary{
+  --bs-btn-bg: var(--accent-secondary);
+  --bs-btn-border-color: var(--accent-secondary);
+  --bs-btn-hover-bg: var(--accent-secondary-hover);
+  --bs-btn-hover-border-color: var(--accent-secondary-hover);
+  --bs-btn-color: var(--accent-primary);
+  --bs-btn-hover-color: var(--accent-primary);
+}
+
+/* Tables */
+.table{
+  border-color: var(--border-weak);
+}
+.table > :not(caption) > * > *{
+  border-color: var(--border-weak);
+}
+.table thead th{
+  background: var(--bg-100);
+  color: var(--text-primary);
+  border-bottom-color: var(--border-weak);
+}
+.table tbody tr:nth-child(even){
+  background: #FAFAFA;
+}
+
+/* Progress */
+.progress{
+  height: 12px;
+  background: var(--bg-100);
+}
+.progress-bar{ transition: width .3s ease; }
+.progress-bar.bar-critical{ background: var(--sys-critical); }
+.progress-bar.bar-30{ background: #FF7A7A; }
+.progress-bar.bar-50{ background: var(--sys-success); }
+.progress-bar.bar-70{ background: var(--accent-primary); }
+
+/* Character row under progress */
+.kpi-char-row{ margin-top: 6px; }
+.kpi-char-track img{ vertical-align: middle; }
+
+/* Minor helpers */
+.section{ margin-bottom: 24px; }
