@@ -49,7 +49,7 @@ function findUserRecordByEmail(users, email) {
 }
 
 /** Рендер панели сотрудника */
-async function renderEmployeePanel(app, user, usersCurrent) {
+async function renderEmployeePanel(app, user, usersCurrent, deptData) {
   const me = findUserRecordByEmail(usersCurrent, user.email || user.Email);
   if (!me) {
     const warn = document.createElement('div');
@@ -58,6 +58,26 @@ async function renderEmployeePanel(app, user, usersCurrent) {
     app.append(warn);
     return;
   }
+
+  // === ВЕРХНИЙ БАР: Прогресс отдела (месяц)
+  const deptTop = document.createElement('section');
+  deptTop.className = 'mb-4';
+  const deptH3 = document.createElement('h3');
+  deptH3.textContent = 'Прогресс отдела (месяц)';
+  deptH3.className = 'mb-3';
+  const deptMonthPercent = Number(deptData?.monthPercent ?? 0);
+  deptTop.append(deptH3, createProgressBar(deptMonthPercent, 'department'));
+  app.append(deptTop);
+
+  // Подготовим личные проценты (корректная шкала)
+  const employeesCount   = Number(deptData?.employeesCount ?? 0);
+  const maxWeekDept      = Number(deptData?.maxWeek ?? 0);      // суммарный макс на департамент за неделю
+  const weeksInMonth     = Number(deptData?.weeksInMonth ?? 4); // из бэкенда
+  const maxWeekPersonal  = (employeesCount > 0) ? (maxWeekDept / employeesCount) : 0;
+  const maxMonthPersonal = maxWeekPersonal * weeksInMonth;
+
+  const myWeekPercent  = maxWeekPersonal  > 0 ? Math.min(100, Math.round((me.week  / maxWeekPersonal)  * 100)) : 0;
+  const myMonthPercent = maxMonthPersonal > 0 ? Math.min(100, Math.round((me.month / maxMonthPersonal) * 100)) : 0;
 
   // Заголовок панели сотрудника
   const h3 = document.createElement('h3');
@@ -84,17 +104,17 @@ async function renderEmployeePanel(app, user, usersCurrent) {
   const weekTitle = document.createElement('div');
   weekTitle.className = 'mb-1 text-secondary';
   weekTitle.textContent = 'Неделя (текущая)';
-  weekBox.append(weekTitle, createProgressBar(me.week ? Math.min(me.week / 1 * 100, 100) : 0, 'user'));
+  weekBox.append(weekTitle, createProgressBar(myWeekPercent, 'user'));
   colWeek.append(weekBox);
 
-  // Месяц (текущий)
+  // Месяц (текущий) — ЛИЧНЫЙ
   const colMonth = document.createElement('div');
   colMonth.className = 'col-12 col-md-6';
   const monthBox = document.createElement('div');
   const monthTitle = document.createElement('div');
   monthTitle.className = 'mb-1 text-secondary';
-  monthTitle.textContent = 'Месяц (текущий)';
-  monthBox.append(monthTitle, createProgressBar(me.month ? Math.min(me.month / 1 * 100, 100) : 0, 'user'));
+  monthTitle.textContent = 'Месяц (текущий, личный)';
+  monthBox.append(monthTitle, createProgressBar(myMonthPercent, 'user'));
   colMonth.append(monthBox);
 
   row.append(colWeek, colMonth);
@@ -164,7 +184,7 @@ async function renderEmployeePanel(app, user, usersCurrent) {
     }
   }
   btnThis.addEventListener('click', async () => { setActive('this_week'); await loadAndRender('this_week'); });
-  btnPrev.addEventListener('click', async () => { setActive('prev_week'); await loadAndRender('prev_week'); });
+  btnPrev.addEventListener('click', async () => { setActive('prev_week');  await loadAndRender('prev_week');  });
 }
 
 /** Рендер панели наблюдателя */
@@ -183,7 +203,7 @@ function renderObserverPanel(app, deptData, employeesPrevWeek, employeesCurrent)
   const h4 = document.createElement('h4');
   h4.textContent = 'ТОП-3';
   const cap = document.createElement('div');
-  cap.className = 'text-tertiary small mb-2';
+  cap.className = 'text-terтиary small mb-2';
   const { start, end } = getLastFullWeekBounds();
   cap.textContent = formatRange(start, end);
   topSection.append(h4, cap, createLeaderboard(employeesPrevWeek, 'week'));
@@ -230,8 +250,6 @@ export async function renderDashboard(user) {
   app.append(loader);
 
   try {
-    console.log('renderDashboard, role:', role);
-
     // Данные, нужные всем
     const [deptRes, usersCurrent, usersPrevWeek] = await Promise.all([
       apiGetProgress('department'),
@@ -247,11 +265,10 @@ export async function renderDashboard(user) {
 
     // Ветка по ролям
     if (role === 'employee') {
-      await renderEmployeePanel(app, user, usersCurrent);
+      await renderEmployeePanel(app, user, usersCurrent, deptData);
     } else if (role === 'observer') {
       renderObserverPanel(app, deptData, employeesPrev, employeesCurrent);
     } else if (role === 'admin') {
-      // Админ: общий обзор (как раньше) + Admin-панель
       // 1) Прогресс отдела (месяц)
       const deptSection = document.createElement('section');
       const h3Dept = document.createElement('h3');
