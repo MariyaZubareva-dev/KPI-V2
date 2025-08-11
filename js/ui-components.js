@@ -6,6 +6,16 @@
  * @param {string} [size] — 'department' или 'user' (для CSS-классов)
  * @returns {HTMLElement}
  */
+export function createLoader(text = 'Загружаем данные…') {
+  const box = document.createElement('div');
+  box.className = 'd-flex align-items-center gap-2 my-3';
+  box.innerHTML = `
+    <div class="spinner-border" role="status" aria-hidden="true"></div>
+    <span>${text}</span>
+  `;
+  return box;
+}
+
 export function createProgressBar(percent, size = 'department') {
   const p = Math.max(0, Math.min(100, Number(percent) || 0));
 
@@ -95,6 +105,13 @@ function createCharacterImage(percent) {
  * @returns {HTMLElement}
  */
 export function createUsersTable(users) {
+  if (!Array.isArray(users) || users.length === 0) {
+    const info = document.createElement('div');
+    info.className = 'text-secondary my-2';
+    info.textContent = 'Нет сотрудников с ролью employee или нет данных.';
+    return info;
+  }
+
   const table = document.createElement('table');
   table.classList.add('table', 'table-striped');
 
@@ -112,9 +129,9 @@ export function createUsersTable(users) {
   users.forEach(u => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${u.name}</td>
-      <td>${u.week}</td>
-      <td>${u.month}</td>
+      <td>${u.name ?? '-'}</td>
+      <td>${(u.week ?? 0)}</td>
+      <td>${(u.month ?? 0)}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -130,17 +147,27 @@ export function createUsersTable(users) {
  * @returns {HTMLElement}
  */
 export function createLeaderboard(users, period = 'week') {
-  // Сортируем по нужному периоду и берём 3 первых
-  const sorted = [...users]
-    .sort((a, b) => b[period] - a[period])
+  const safe = Array.isArray(users) ? users : [];
+  const sorted = safe
+    .slice()
+    .sort((a, b) => (b[period] ?? 0) - (a[period] ?? 0))
+    .filter(u => (u[period] ?? 0) > 0)
     .slice(0, 3);
 
   const container = document.createElement('div');
   container.classList.add('leaderboard', 'mb-4');
 
+  if (sorted.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'text-secondary';
+    empty.textContent = 'Нет данных за период.';
+    container.appendChild(empty);
+    return container;
+  }
+
   sorted.forEach(u => {
     const item = document.createElement('div');
-    item.textContent = `${u.name}: ${u[period]}`;
+    item.textContent = `${u.name ?? '-'}: ${u[period] ?? 0}`;
     container.appendChild(item);
   });
 

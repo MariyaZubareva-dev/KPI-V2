@@ -71,3 +71,5 @@ h5 { font-size: var(--fs-h5); line-height: var(--lh-h5); font-weight: var(--fw-m
 .kpi-char-track img { vertical-align: top; }  /* чтобы не было «просвета» */
 
 #app h2 { margin: 0; }
+
+.table td, .table th { vertical-align: middle; }

@@ -1,5 +1,5 @@
 import { getProgress } from './api.js';
-import { createProgressBar, createUsersTable, createLeaderboard } from './ui-components.js';
+import { createProgressBar, createUsersTable, createLeaderboard, createLoader } from './ui-components.js';
 
 /**
  * Загружает и рендерит дашборд в зависимости от роли
@@ -32,12 +32,15 @@ export async function renderDashboard(user) {
   toolbar.appendChild(logoutBtn);
   
   app.append(toolbar);
+  const loader = createLoader();
+  app.append(loader);
 
   // 1. Получаем данные департамента и пользователей параллельно
   const [deptRes, usersRes] = await Promise.all([
     getProgress('department'),
     getProgress('users')
   ]);
+  loader.remove();
 
   const deptData  = deptRes.data || deptRes;
   const usersData = usersRes.data || usersRes;
