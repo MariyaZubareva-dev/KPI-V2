@@ -27,12 +27,10 @@ export async function renderDashboard(user) {
   logoutBtn.textContent = 'Выйти';
   logoutBtn.addEventListener('click', () => {
     localStorage.removeItem('user');
-    // важное отличие: НЕ чистим #app и не трогаем login-section — просто перезагружаем страницу
-    location.reload();
+    location.reload(); // важное отличие: НЕ чистим #app вручную
   });
   toolbar.appendChild(logoutBtn);
-
-  // вместо app.append(title);
+  
   app.append(toolbar);
 
   // 1. Получаем данные департамента и пользователей параллельно
@@ -49,18 +47,7 @@ export async function renderDashboard(user) {
     u => String(u.role || '').toLowerCase() === 'employee'
   );
 
-  // 1. Получаем данные департамента и пользователей параллельно
-  const [deptRes, usersRes] = await Promise.all([
-    getProgress('department'),
-    getProgress('users')
-  ]);
 
-  const deptData = deptRes.data || deptRes;
-  const usersData = usersRes.data || usersRes;
-  // Показываем в UI только сотрудников с ролью employee
-  const employees = (usersData || []).filter(
-    u => String(u.role || '').toLowerCase() === 'employee'
-  );
 
   // 2. Рендер общего прогресса (МЕСЯЦ)
   const deptSection = document.createElement('section');
