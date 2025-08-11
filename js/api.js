@@ -49,19 +49,24 @@ async function request(action, { method = 'GET', data = null, query = {} } = {})
  * @param {string} userID
  */
 export async function getProgress(scope, userID) {
-  return request('getProgress', { method: 'GET', query: { scope, userID } });
+  const params = { scope };
+  if (userID) params.userID = userID;
+  const data = await request('getProgress', { method: 'GET', params });
+  if (data?.ok === false || data?.success === false) throw new Error(data.error || 'getProgress returned error');
+  return data;
 }
 
 /**
  * Запись KPI события
  * payload: { userID, date, metric, value, comment, ... }
  */
-export async function recordKPI({ userID, kpiId, score, date } = {}) {
-  const data = await request('recordKPI', {
-    method: 'POST',
-    body: { userID, kpiId, score, date }
-  });
-  if (data?.ok === false) throw new Error(data.error || 'recordKPI returned error');
+export async function recordKPI(userID, kpiId, score, date) {
+  if (typeof userID === 'object' && userID !== null) {
+    ({ userID, kpiId, score, date } = userID);
+  }
+  const params = { userID, kpiId, score, date };
+  const data = await request('recordKPI', { method: 'GET', params }); // соответствуем handleRecordKPI(e)
+  if (data?.ok === false || data?.success === false) throw new Error(data.error || 'recordKPI returned error');
   return data;
 }
 
@@ -69,17 +74,16 @@ export async function recordKPI({ userID, kpiId, score, date } = {}) {
  * Логирование произвольных событий в Sheets
  * payload: { event, userID, meta?: {...} }
  */
-export async function logEvent(event, { userID, email, details } = {}) {
-  const data = await request('logEvent', {
-    method: 'POST',
-    body: {
-      userID: userID ?? (JSON.parse(localStorage.getItem('user') || '{}').id || ''),
-      email:  email  ?? (JSON.parse(localStorage.getItem('user') || '{}').email || ''),
-      event,
-      details: typeof details === 'object' ? JSON.stringify(details) : (details ?? '')
-    }
-  });
-  if (data?.ok === false) throw new Error(data.error || 'logEvent returned error');
+export async function logEvent(event, extra = {}) {
+  const params = {
+    event,
+    userID: extra.userID || (extra.user && extra.user.id) || '',
+    email:  extra.email  || (extra.user && extra.user.email) || ''
+  };
+  if (Object.keys(extra).length) params.details = JSON.stringify(extra);
+
+  const data = await request('log', { method: 'GET', params });
+  if (data?.ok === false || data?.success === false) throw new Error(data.error || 'logEvent returned error');
   return data;
 }
 

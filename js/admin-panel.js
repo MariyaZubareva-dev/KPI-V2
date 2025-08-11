@@ -77,12 +77,17 @@ async function loadKpisForUser(userID, container) {
     checkbox.addEventListener('change', async () => {
       checkbox.disabled = true;
       try {
-        await recordKPI({ userID, kpiId: kpi.KPI_ID, score: kpi.weight });
+        await recordKPI({ 
+          userID, 
+          kpiId: kpi.KPI_ID, 
+          score: kpi.weight 
+        });
         await logEvent('kpi_recorded', {
           userID,
           details: { kpiId: kpi.KPI_ID, score: kpi.weight }
         });
         await loadKpisForUser(userID, container); // перерисуем список
+        await logEvent('kpi_recorded', { userID, kpiId: kpi.KPI_ID, weight: kpi.weight });
         window.location.reload();                  // обновим дашборд
       } catch (err) {
         console.error('Ошибка записи KPI:', err);
