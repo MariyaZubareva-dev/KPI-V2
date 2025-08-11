@@ -1,4 +1,3 @@
-// js/dashboard.js
 import { getProgress as apiGetProgress, logEvent } from './api.js';
 import { createProgressBar, createUsersTable, createLeaderboard, createLoader } from './ui-components.js';
 
@@ -11,8 +10,7 @@ export async function renderDashboard(user) {
   const role     = String(user?.role || '').toLowerCase();
   const app      = document.getElementById('app');
 
-  // Полная очистка контейнера
-  if (app) app.innerHTML = '';
+  app.innerHTML = '';
 
   // Заголовок + logout
   const title = document.createElement('h2');
@@ -34,7 +32,6 @@ export async function renderDashboard(user) {
 
   app.append(toolbar);
 
-  // Лоадер
   const loader = createLoader('Загружаем данные…');
   app.append(loader);
 
@@ -42,48 +39,33 @@ export async function renderDashboard(user) {
     console.log('renderDashboard, user:', user);
     console.log('renderDashboard, role:', role);
 
-    // 1) Получаем данные по отделу и пользователям
-    const deptRes  = await apiGetProgress('department');
-    const usersRes = await apiGetProgress('users');
+    // Благодаря нормализации в api.js:
+    const deptData = await apiGetProgress('department'); // объект
+    const usersArr = await apiGetProgress('users');      // массив
 
     loader.remove();
 
-    console.log('RAW deptRes:', deptRes);
-    console.log('RAW usersRes:', usersRes);
+    console.log('RAW deptRes:', deptData);
+    console.log('RAW usersRes:', usersArr);
+    console.log('usersArr.length:', Array.isArray(usersArr) ? usersArr.length : 'not array');
 
-    // Разворачиваем ответы (с учётом обёртки { success, data })
-    const deptData = deptRes?.data ?? deptRes;
-    const usersRaw = usersRes?.data ?? usersRes;
+    const employees = Array.isArray(usersArr)
+      ? usersArr.filter(u => String(u?.role ?? '').trim().toLowerCase() === 'employee')
+      : [];
 
-    // 🛠 Нормализуем список пользователей из разных возможных форматов
-    const usersArr = Array.isArray(usersRaw)
-      ? usersRaw
-      : Array.isArray(usersRaw?.data)
-        ? usersRaw.data
-        : Array.isArray(usersRaw?.users)
-          ? usersRaw.users
-          : [];
-
-    console.log('usersArr.length:', usersArr.length);
-    if (usersArr.length) console.log('usersArr[0] sample:', usersArr[0]);
-
-    // Берём только сотрудников; роль чистим от пробелов и приводим к нижнему регистру
-    const employees = usersArr.filter(u => String(u?.role ?? '').trim().toLowerCase() === 'employee');
     console.log('employees.length:', employees.length);
 
-    // 2) Прогресс отдела (месяц)
+    // 1) Прогресс отдела (месяц)
     const deptSection = document.createElement('section');
     deptSection.id = 'dept-section';
-
     const deptTitle = document.createElement('h3');
     deptTitle.textContent = 'Прогресс отдела (месяц)';
     deptSection.append(deptTitle);
-
     const monthPercent = Number(deptData?.monthPercent ?? 0);
     deptSection.append(createProgressBar(monthPercent, 'department'));
     app.append(deptSection);
 
-    // 3) Лидерборды
+    // 2) Лидерборды
     const leaderWeek = document.createElement('section');
     leaderWeek.id = 'leader-week';
     const h4Week = document.createElement('h4');
@@ -98,7 +80,7 @@ export async function renderDashboard(user) {
     leaderMonth.append(h4Month, createLeaderboard(employees, 'month'));
     app.append(leaderMonth);
 
-    // 4) Таблица пользователей
+    // 3) Таблица пользователей
     const tableSection = document.createElement('section');
     tableSection.id = 'users-table';
     const tableTitle = document.createElement('h4');
@@ -106,7 +88,7 @@ export async function renderDashboard(user) {
     tableSection.append(tableTitle, createUsersTable(employees));
     app.append(tableSection);
 
-    // 5) Admin-панель — только для админа и только если есть сотрудники
+    // 4) Admin-панель
     if (role === 'admin') {
       if (employees.length) {
         console.log('Отрисовываем Admin-панель');
@@ -117,11 +99,10 @@ export async function renderDashboard(user) {
       }
     }
 
-    // Лог события просмотра
     try { await logEvent('dashboard_view', { email: user?.email || user?.Email }); } catch {}
 
   } catch (err) {
-    try { loader.remove(); } catch {}
+    loader.remove();
     console.error('Ошибка при рендере дашборда:', err);
     const alert = document.createElement('div');
     alert.className = 'alert alert-danger';
@@ -131,5 +112,4 @@ export async function renderDashboard(user) {
   }
 }
 
-// ⚠️ Здесь нет auto-инициализации по DOMContentLoaded.
-// Вызовите renderDashboard(user) только из auth.js после успешной авторизации.
+// ВАЖНО: без auto-инициализации. Вызов делаем из auth.js после логина.
