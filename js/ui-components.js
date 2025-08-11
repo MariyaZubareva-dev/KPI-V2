@@ -26,20 +26,34 @@ export function createProgressBar(percent, size = 'department') {
 }
 
 function createCharacterImage(percent) {
+  // ниже 30 — персонаж не показывается
   if (percent < 30) return document.createElement('span');
 
   const img = document.createElement('img');
-  img.width = 64;
+  img.width = 64;           // показываем маленькими (источник может быть 512x512)
   img.height = 64;
   img.alt = 'KPI Character';
+  img.decoding = 'async';
+  img.loading = 'lazy';
 
   if (percent < 50) {
-    img.src = 'images/kopatych.png';
+    img.src = './images/kopatych.png';           // 30–49
+    img.title = 'Зима впроголодь (≥30)';
   } else if (percent < 70) {
-    img.src = 'images/karkarych-sovunya.png';
+    img.src = './images/karkarych-sovunya.png';  // 50–69
+    img.title = 'Минимум, чтобы выжить (≥50)';
   } else {
-    img.src = 'images/nyusha.png';
+    img.src = './images/nyusha.png';             // ≥70
+    img.title = 'Изобилие (≥70)';
   }
+
+  // На всякий случай красивый фолбэк, если файла нет
+  img.onerror = () => {
+    const fallback = document.createElement('span');
+    fallback.style.fontSize = '28px';
+    fallback.textContent = percent < 50 ? '🥕' : (percent < 70 ? '🍵' : '👑');
+    img.replaceWith(fallback);
+  };
 
   return img;
 }
