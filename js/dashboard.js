@@ -14,10 +14,40 @@ export async function renderDashboard(user) {
   const app = document.getElementById('app');
   app.innerHTML = ''; // очистить предыдущий контент
 
-  // Заголовок
+  // Заголовок + logout
   const title = document.createElement('h2');
   title.textContent = `Добро пожаловать, ${userName}!`;
-  app.append(title);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'd-flex justify-content-between align-items-center mb-3';
+  toolbar.appendChild(title);
+
+  const logoutBtn = document.createElement('button');
+  logoutBtn.className = 'btn btn-outline-secondary btn-sm';
+  logoutBtn.textContent = 'Выйти';
+  logoutBtn.addEventListener('click', () => {
+    localStorage.removeItem('user');
+    // важное отличие: НЕ чистим #app и не трогаем login-section — просто перезагружаем страницу
+    location.reload();
+  });
+  toolbar.appendChild(logoutBtn);
+
+  // вместо app.append(title);
+  app.append(toolbar);
+
+  // 1. Получаем данные департамента и пользователей параллельно
+  const [deptRes, usersRes] = await Promise.all([
+    getProgress('department'),
+    getProgress('users')
+  ]);
+
+  const deptData  = deptRes.data || deptRes;
+  const usersData = usersRes.data || usersRes;
+
+  // берём только сотрудников с ролью employee
+  const employees = (usersData || []).filter(
+    u => String(u.role || '').toLowerCase() === 'employee'
+  );
 
   // 1. Получаем данные департамента и пользователей параллельно
   const [deptRes, usersRes] = await Promise.all([
@@ -64,7 +94,7 @@ export async function renderDashboard(user) {
   const tableTitle = document.createElement('h4');
   tableTitle.textContent = 'Сотрудники и баллы';
   tableSection.append(tableTitle);
-  tableSection.append(createUsersTable(usersData));
+  tableSection.append(createUsersTable(employees));
   app.append(tableSection);
 
   // 5. Admin-панель только для админа
