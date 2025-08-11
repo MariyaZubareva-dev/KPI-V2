@@ -59,16 +59,33 @@ export async function getProgress(scope, userID) {
 
 /**
  * Запись KPI события
+ * @param {object|string|number} userIDOrObj - либо объект, либо userID
+ * Объект формата: { userID, kpiId, score, date?, actorEmail? }
  */
-export async function recordKPI(userID, kpiId, score, date) {
-  if (typeof userID === 'object' && userID !== null) ({ userID, kpiId, score, date } = userID);
-  const params = { userID, kpiId, score, date };
+export async function recordKPI(userIDOrObj, kpiId, score, date) {
+  let userID, actorEmail;
+  if (typeof userIDOrObj === 'object' && userIDOrObj !== null) {
+    ({ userID, kpiId, score, date, actorEmail } = userIDOrObj);
+  } else {
+    userID = userIDOrObj;
+  }
+
+  // если actorEmail не передали явно — возьмём из localStorage
+  if (!actorEmail) {
+    try {
+      const u = JSON.parse(localStorage.getItem('user')) || {};
+      actorEmail = u.email || u.Email || '';
+    } catch { actorEmail = ''; }
+  }
+
+  const params = { userID, kpiId, score, date, actorEmail };
   const raw = await request('recordKPI', { method: 'GET', params });
   if (raw?.ok === false || raw?.success === false) {
     throw new Error(raw?.error || raw?.message || 'recordKPI returned error');
   }
   return raw?.data ?? raw;
 }
+
 
 /**
  * Логирование событий в Sheets
