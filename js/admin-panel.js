@@ -58,8 +58,7 @@ async function loadKpisForUser(userID, container) {
 
   // Получаем прогресс по конкретному пользователю
   const res = await getProgress('user', userID);
-  // Ожидаем res.data — массив объектов { KPI_ID, name, weight, done }
-  const kpis = res.data; // если сервер возвращает иначе, адаптируйте
+  const kpis = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
 
   // Рендерим чек-боксы
   container.innerHTML = '';

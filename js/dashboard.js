@@ -39,21 +39,17 @@ export async function renderDashboard(user) {
   app.append(loader);
 
   // 1. Получаем данные департамента и пользователей параллельно
-  const [deptRes, usersRes] = await Promise.all([
+  const [deptData, usersData] = await Promise.all([
     getProgress('department'),
     getProgress('users')
   ]);
-  loader.remove();
 
-  const deptData  = deptRes.data || deptRes;
-  const usersData = usersRes.data || usersRes;
+  console.log('deptData:', deptData);
+  console.log('usersData:', usersData);
 
-  // берём только сотрудников с ролью employee
-  const employees = (usersData || []).filter(
-    u => String(u.role || '').toLowerCase() === 'employee'
-  );
-
-
+  // берём только сотрудников с ролью employee (без падения, если вдруг не массив)
+  const list = Array.isArray(usersData) ? usersData : [];
+  const employees = list.filter(u => String(u.role || '').toLowerCase() === 'employee');
 
   // 2. Рендер общего прогресса (МЕСЯЦ)
   const deptSection = document.createElement('section');

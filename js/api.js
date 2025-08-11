@@ -51,9 +51,13 @@ async function request(action, { method = 'GET', data = null, query = {} } = {})
 export async function getProgress(scope, userID) {
   const params = { scope };
   if (userID) params.userID = userID;
-  const data = await request('getProgress', { method: 'GET', params });
-  if (data?.ok === false || data?.success === false) throw new Error(data.error || 'getProgress returned error');
-  return data;
+
+  const raw = await request('getProgress', { method: 'GET', params });
+  if (raw?.ok === false || raw?.success === false) {
+    throw new Error(raw.error || 'getProgress returned error');
+  }
+  // <= Всегда возвращаем "начинку", а не обёртку
+  return raw?.data ?? raw;
 }
 
 /**
@@ -65,9 +69,11 @@ export async function recordKPI(userID, kpiId, score, date) {
     ({ userID, kpiId, score, date } = userID);
   }
   const params = { userID, kpiId, score, date };
-  const data = await request('recordKPI', { method: 'GET', params }); // соответствуем handleRecordKPI(e)
-  if (data?.ok === false || data?.success === false) throw new Error(data.error || 'recordKPI returned error');
-  return data;
+  const raw = await request('recordKPI', { method: 'GET', params });
+  if (raw?.ok === false || raw?.success === false) {
+    throw new Error(raw.error || 'recordKPI returned error');
+  }
+  return raw?.data ?? raw;
 }
 
 /**
@@ -82,9 +88,11 @@ export async function logEvent(event, extra = {}) {
   };
   if (Object.keys(extra).length) params.details = JSON.stringify(extra);
 
-  const data = await request('log', { method: 'GET', params });
-  if (data?.ok === false || data?.success === false) throw new Error(data.error || 'logEvent returned error');
-  return data;
+  const raw = await request('log', { method: 'GET', params });
+  if (raw?.ok === false || raw?.success === false) {
+    throw new Error(raw.error || 'logEvent returned error');
+  }
+  return raw?.data ?? raw;
 }
 
 // ---------- aliases (на случай старых импортов) ----------
