@@ -41,7 +41,7 @@ export async function renderDashboard(user) {
 
     // Благодаря нормализации в api.js:
     const deptData = await apiGetProgress('department'); // объект
-    const usersArr = await apiGetProgress('users');      // массив
+    const usersArr = await apiGetProgress('users', { period: 'prev_week' });      // массив
 
     loader.remove();
 

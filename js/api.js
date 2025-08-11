@@ -1,3 +1,4 @@
+// js/api.js
 import { API_BASE } from './config.js';
 
 // ---------- helpers ----------
@@ -11,26 +12,26 @@ async function request(action, { method = 'GET', params = {}, body = null } = {}
   const url = new URL(API_BASE);
   url.searchParams.set('action', action);
 
+  // приклеиваем любые параметры запроса
   Object.entries(params || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '') {
       url.searchParams.set(k, String(v));
     }
   });
 
-  // единоразовый ts-параметр + лог конечного урла
+  // cache-busting и лог
   url.searchParams.set('_ts', Date.now().toString());
   console.log('[API]', action, method, url.toString());
 
   const init = { method, mode: 'cors', credentials: 'omit' };
 
   if (method === 'POST') {
-    // text/plain без preflight; при желании можно поменять на form-url-encoded
+    // text/plain чтобы избежать preflight; при желании можно form-url-encoded
     init.headers = { 'Content-Type': 'text/plain;charset=UTF-8' };
     if (body) init.body = typeof body === 'string' ? body : JSON.stringify(body);
   }
 
   const res = await fetch(url.toString(), init);
-
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`${action} failed: ${res.status} ${res.statusText} ${txt.slice(0, 200)}`);
@@ -44,27 +45,38 @@ async function request(action, { method = 'GET', params = {}, body = null } = {}
 /**
  * Прогресс
  * @param {'department'|'users'|'user'} scope
- * @param {string=} userID
+ * @param {object|string=} opts - либо объект опций (напр. { period:'prev_week', userID:'2' }),
+ *                                либо строка userID (для обратной совместимости).
  */
-export async function getProgress(scope, userID) {
+export async function getProgress(scope, opts = undefined) {
   const params = { scope };
-  if (userID) params.userID = userID;
+
+  if (typeof opts === 'string' || typeof opts === 'number') {
+    // b/c: getProgress('user', '2')
+    params.userID = String(opts);
+  } else if (opts && typeof opts === 'object') {
+    const { userID, period, ...rest } = opts;
+    if (userID) params.userID = userID;
+    if (period) params.period = period;
+    // позволяем прокидывать и другие параметры без сюрпризов
+    Object.assign(params, rest);
+  }
 
   const raw = await request('getProgress', { method: 'GET', params });
   if (raw?.ok === false || raw?.success === false) {
     throw new Error(raw?.error || raw?.message || 'getProgress returned error');
   }
 
-  // Нормализация:
-  // - department -> объект
-  // - users -> массив сотрудников
-  // - user -> массив KPI
-  if (scope === 'department') return raw?.data ?? raw;
-  return Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
+  const data = raw?.data ?? raw;
+
+  // Небольшая нормализация, чтобы фронт не падал
+  if (scope === 'department') return data || {};
+  return Array.isArray(data) ? data : [];
 }
 
 /**
  * Запись KPI события
+ * Аргументы: (userID, kpiId, score, date?) или объект { userID, kpiId, score, date }
  */
 export async function recordKPI(userID, kpiId, score, date) {
   if (typeof userID === 'object' && userID !== null) ({ userID, kpiId, score, date } = userID);
@@ -78,6 +90,7 @@ export async function recordKPI(userID, kpiId, score, date) {
 
 /**
  * Логирование событий в Sheets
+ * logEvent('dashboard_view', { email, userID, ... })
  */
 export async function logEvent(event, extra = {}) {
   const params = {
@@ -94,5 +107,5 @@ export async function logEvent(event, extra = {}) {
   return raw?.data ?? raw;
 }
 
-// алиасы на случай старых импортов
+// алиасы для старых импортов
 export { getProgress as apiGetProgress, recordKPI as apiRecordKPI, logEvent as apiLogEvent };
