@@ -1,6 +1,7 @@
 /* Корневые переменные */
 :root {
   /* Типографика — Desktop */
+  --font-sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
   --fs-h0: 62px;   --lh-h0: 72px;
   --fs-h1: 56px;   --lh-h1: 64px;
   --fs-h2: 40px;   --lh-h2: 54px;
