@@ -1,5 +1,6 @@
 import { getProgress } from './api.js';
 import { createProgressBar, createUsersTable, createLeaderboard, createLoader } from './ui-components.js';
+import { getProgress, logEvent } from './api.js';
 
 /**
  * Загружает и рендерит дашборд в зависимости от роли
@@ -25,13 +26,15 @@ export async function renderDashboard(user) {
   const logoutBtn = document.createElement('button');
   logoutBtn.className = 'btn btn-outline-secondary btn-sm';
   logoutBtn.textContent = 'Выйти';
-  logoutBtn.addEventListener('click', () => {
+  logoutBtn.addEventListener('click', async () => {
+    await logEvent('logout', { email: user.email || user.Email });
     localStorage.removeItem('user');
     location.reload(); // важное отличие: НЕ чистим #app вручную
   });
   toolbar.appendChild(logoutBtn);
   
   app.append(toolbar);
+  logEvent('dashboard_view', { email: user.email || user.Email });
   const loader = createLoader();
   app.append(loader);
 

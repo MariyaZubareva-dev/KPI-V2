@@ -48,3 +48,16 @@ export async function getUserByEmail(email) {
   if (!res.ok) throw new Error(`getUserByEmail failed: ${res.status}`);
   return res.json();
 }
+export async function logEvent(event, { userID='', email='', details='' } = {}) {
+  try {
+    const url = new URL(API_BASE);
+    url.searchParams.set('action', 'log');
+    url.searchParams.set('event', event);
+    if (userID) url.searchParams.set('userID', userID);
+    if (email)  url.searchParams.set('email',  email);
+    if (details)url.searchParams.set('details', String(details));
+    await fetch(url); // fire-and-forget
+  } catch (e) {
+    console.warn('logEvent failed', e);
+  }
+}

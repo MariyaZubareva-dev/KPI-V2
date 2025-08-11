@@ -1,5 +1,6 @@
 import { API_BASE } from './config.js';
 import { renderDashboard } from './dashboard.js';
+import { logEvent } from './api.js';   // ← импорт
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginSection = document.getElementById('login-section');

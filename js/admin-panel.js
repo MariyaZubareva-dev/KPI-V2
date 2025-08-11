@@ -1,6 +1,6 @@
 // js/admin-panel.js
 
-import { recordKPI, getProgress } from './api.js';
+import { recordKPI, getProgress, logEvent } from './api.js';
 
 /**
  * Создаёт Admin-панель для отметок KPI
@@ -80,6 +80,10 @@ async function loadKpisForUser(userID, container) {
       // После записи обновляем и список, и дашборд
       await loadKpisForUser(userID, container);
       window.location.reload(); // простой способ обновить дашборд
+      await logEvent('kpi_recorded', {
+        userID,
+        details: JSON.stringify({ kpiId: kpi.KPI_ID, weight: kpi.weight })
+      });
     });
     container.appendChild(label);
   });
