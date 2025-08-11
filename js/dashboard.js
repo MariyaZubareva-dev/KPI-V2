@@ -12,11 +12,12 @@ import {
  * @param {{ID?: string, Email?: string, role: string, Name?: string, name?: string, email?: string}} user
  */
 export async function renderDashboard(user) {
-  const userName = user?.Name || user?.name || user?.Email || user?.email || 'Пользователь';
-  const role     = String(user?.role || '').toLowerCase();
-  const app      = document.getElementById('app');
+  const userName  = user?.Name || user?.name || user?.Email || user?.email || 'Пользователь';
+  const role      = String(user?.role || '').toLowerCase();
+  const userEmail = (user?.email || user?.Email || '').toLowerCase();
+  const app       = document.getElementById('app');
 
-  // очистка
+  // Очистка
   app.innerHTML = '';
 
   // Заголовок + logout
@@ -25,7 +26,7 @@ export async function renderDashboard(user) {
 
   const toolbar = document.createElement('div');
   toolbar.className = 'd-flex justify-content-between align-items-center mb-3';
-  toolbar.append(title);
+  toolbar.appendChild(title);
 
   const logoutBtn = document.createElement('button');
   logoutBtn.className = 'btn btn-outline-primary btn-sm';
@@ -35,40 +36,45 @@ export async function renderDashboard(user) {
     localStorage.removeItem('user');
     location.reload();
   });
-  toolbar.append(logoutBtn);
+  toolbar.appendChild(logoutBtn);
 
-  app.append(toolbar);
+  app.appendChild(toolbar);
 
-  // Контейнеры разделов (чтобы было куда «подменять» контент при рефреше)
-  const deptSection   = document.createElement('section'); deptSection.id   = 'dept-section';
-  const leaderWeekSec = document.createElement('section'); leaderWeekSec.id = 'leader-week';
-  const leaderMonthSec= document.createElement('section'); leaderMonthSec.id= 'leader-month';
-  const tableSection  = document.createElement('section'); tableSection.id  = 'users-table';
+  // Контейнер панели сотрудника (только для employee)
+  const employeeSection = document.createElement('section');
+  employeeSection.id = 'employee-section';
+  if (role === 'employee') app.appendChild(employeeSection);
 
+  // Общие разделы страницы
+  const deptSection    = document.createElement('section'); deptSection.id    = 'dept-section';
+  const leaderWeekSec  = document.createElement('section'); leaderWeekSec.id  = 'leader-week';
+  const leaderMonthSec = document.createElement('section'); leaderMonthSec.id = 'leader-month';
+  const tableSection   = document.createElement('section'); tableSection.id   = 'users-table';
   app.append(deptSection, leaderWeekSec, leaderMonthSec, tableSection);
 
-  // Лоадер на время первичной загрузки
+  // Лоадер
   const loader = createLoader('Загружаем данные…');
   app.append(loader);
 
-  // --- вспомогательные функции ---
+  // для админ-панели
+  let lastEmployees = [];
 
+  // ===== helpers =====
   function getLastFullWeekBounds() {
-    // Последнее полное Пн–Вс до текущего понедельника
     const now = new Date();
     const day = now.getDay(); // 0..6 (0 — вс)
     const mondayThisWeek = new Date(now);
-    // смещение до понедельника текущей недели
     const diffToMonday = (day === 0 ? -6 : 1 - day);
     mondayThisWeek.setDate(now.getDate() + diffToMonday);
-    // конец прошлой недели — воскресенье перед этим понедельником
+
     const end = new Date(mondayThisWeek);
     end.setDate(mondayThisWeek.getDate() - 1);
     end.setHours(23, 59, 59, 999);
-    // начало — понедельник за 6 дней до конца
+
     const start = new Date(end);
     start.setDate(end.getDate() - 6);
     start.setHours(0, 0, 0, 0);
+
     return { start, end };
   }
 
@@ -88,51 +94,112 @@ export async function renderDashboard(user) {
     return wrap;
   }
 
-  async function refreshDashboardData() {
-    try {
-      const [deptRes, usersRes, usersPrevRes] = await Promise.all([
-        apiGetProgress('department'),
-        apiGetProgress('users'),
-        apiGetProgress('users_lastweek')
-      ]);
+  function renderEmployeePanel({ deptData, usersArr }) {
+    if (role !== 'employee') return;
 
-      const deptData   = deptRes?.data ?? deptRes;
-      const usersArr   = (usersRes?.data ?? usersRes) || [];
-      const usersPrev  = (usersPrevRes?.data ?? usersPrevRes) || [];
+    // найдём себя по email
+    const me = Array.isArray(usersArr)
+      ? usersArr.find(u => (u.email || '').toLowerCase() === userEmail)
+      : null;
 
-      const employees      = Array.isArray(usersArr)
-        ? usersArr.filter(u => String(u.role || '').toLowerCase() === 'employee')
-        : [];
-      const employeesPrevW = Array.isArray(usersPrev)
-        ? usersPrev.filter(u => String(u.role || '').toLowerCase() === 'employee')
-        : [];
+    employeeSection.innerHTML = '';
 
-      // 1) Прогресс отдела (месяц)
-      deptSection.innerHTML = '';
-      const deptTitle = document.createElement('h3');
-      deptTitle.textContent = 'Прогресс отдела (месяц)';
-      deptSection.append(deptTitle, createProgressBar(Number(deptData?.monthPercent ?? 0), 'department'));
+    const head = document.createElement('h3');
+    head.textContent = `Здравствуйте, ${userName}`;
+    employeeSection.append(head);
 
-      // 2) Лидерборды
-      leaderWeekSec.innerHTML = '';
-      leaderWeekSec.append(buildLeaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
-
-      leaderMonthSec.innerHTML = '';
-      const h4Month = document.createElement('h4');
-      h4Month.textContent = 'ТОП-3 за месяц';
-      leaderMonthSec.append(h4Month, createLeaderboard(employees, 'month'));
-
-      // 3) Таблица сотрудников
-      tableSection.innerHTML = '';
-      const tableTitle = document.createElement('h4');
-      tableTitle.textContent = 'Сотрудники и баллы';
-      tableSection.append(tableTitle, createUsersTable(employees));
-    } catch (e) {
-      console.error('refreshDashboardData error', e);
+    if (!me) {
+      const warn = document.createElement('div');
+      warn.className = 'text-secondary';
+      warn.textContent = 'Не удалось найти ваши данные в списке пользователей.';
+      employeeSection.append(warn);
+      return;
     }
+
+    const personalWeekPoints  = Number(me.week || 0);
+    const personalMonthPoints = Number(me.month || 0);
+
+    // Достаём агрегаты из департамента
+    const employeesCount  = Number(deptData?.employeesCount || 1);
+    const maxWeekDept     = Number(deptData?.maxWeek || 0);
+    const perUserMaxWeek  = (maxWeekDept / (employeesCount || 1)) || 1;
+    const weeksInMonth    = Number(deptData?.weeksInMonth || 4);
+    const perUserMaxMonth = perUserMaxWeek * weeksInMonth || 1;
+
+    const personalWeekPercent  = Math.min(100, Math.round((personalWeekPoints  / perUserMaxWeek)  * 100));
+    const personalMonthPercent = Math.min(100, Math.round((personalMonthPoints / perUserMaxMonth) * 100));
+    const deptMonthPercent     = Math.min(100, Math.round(Number(deptData?.monthPercent || 0)));
+
+    const grid = document.createElement('div');
+    grid.className = 'row g-4';
+
+    // Личный — неделя
+    const colWeek = document.createElement('div'); colWeek.className = 'col-12 col-md-6';
+    const h4w = document.createElement('h4'); h4w.textContent = 'Ваш прогресс — неделя (текущая)';
+    colWeek.append(h4w, createProgressBar(personalWeekPercent, 'user'));
+
+    // Личный — месяц
+    const colMonth = document.createElement('div'); colMonth.className = 'col-12 col-md-6';
+    const h4m = document.createElement('h4'); h4m.textContent = 'Ваш прогресс — месяц (текущий)';
+    colMonth.append(h4m, createProgressBar(personalMonthPercent, 'user'));
+
+    // Отдел — месяц
+    const colDept = document.createElement('div'); colDept.className = 'col-12';
+    const h4d = document.createElement('h4'); h4d.textContent = 'Прогресс отдела — месяц (текущий)';
+    colDept.append(h4d, createProgressBar(deptMonthPercent, 'department'));
+
+    grid.append(colWeek, colMonth, colDept);
+    employeeSection.append(grid);
   }
 
-  // первичная загрузка
+  async function refreshDashboardData() {
+    const [deptRes, usersRes, usersPrevRes] = await Promise.all([
+      apiGetProgress('department'),
+      apiGetProgress('users'),
+      apiGetProgress('users_lastweek')
+    ]);
+
+    const deptData  = deptRes?.data ?? deptRes;
+    const usersArr  = (usersRes?.data ?? usersRes) || [];
+    const usersPrev = (usersPrevRes?.data ?? usersPrevRes) || [];
+
+    const employees = Array.isArray(usersArr)
+      ? usersArr.filter(u => String(u.role || '').toLowerCase() === 'employee')
+      : [];
+    const employeesPrevW = Array.isArray(usersPrev)
+      ? usersPrev.filter(u => String(u.role || '').toLowerCase() === 'employee')
+      : [];
+
+    lastEmployees = employees;
+
+    // Панель сотрудника
+    if (role === 'employee') {
+      renderEmployeePanel({ deptData, usersArr });
+    }
+
+    // 1) Прогресс отдела (месяц)
+    deptSection.innerHTML = '';
+    const deptTitle = document.createElement('h3');
+    deptTitle.textContent = 'Прогресс отдела (месяц)';
+    deptSection.append(deptTitle, createProgressBar(Number(deptData?.monthPercent ?? 0), 'department'));
+
+    // 2) Лидерборды
+    leaderWeekSec.innerHTML = '';
+    leaderWeekSec.append(buildLeaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
+
+    leaderMonthSec.innerHTML = '';
+    const h4Month = document.createElement('h4');
+    h4Month.textContent = 'ТОП-3 за месяц';
+    leaderMonthSec.append(h4Month, createLeaderboard(employees, 'month'));
+
+    // 3) Таблица сотрудников
+    tableSection.innerHTML = '';
+    const tableTitle = document.createElement('h4');
+    tableTitle.textContent = 'Сотрудники и баллы';
+    tableSection.append(tableTitle, createUsersTable(employees));
+  }
+
+  // Первичная загрузка
   try {
     await refreshDashboardData();
     try { await logEvent('dashboard_view', { email: user?.email || user?.Email }); } catch {}
@@ -140,14 +207,16 @@ export async function renderDashboard(user) {
     loader.remove();
   }
 
-  // Реакция на отметку KPI из админ-панели — обновляем данные дашборда «на лету»
+  // Моментальный рефреш после отметки KPI (админ-панель диспатчит событие)
   window.addEventListener('kpi-updated', async () => {
     await refreshDashboardData();
   });
 
-  // Если админ — подключаем админ-панель
+  // Если админ — подключаем админ-панель (передаём список сотрудников, если нужен)
   if (role === 'admin') {
     const adminModule = await import('./admin-panel.js');
-    app.append(adminModule.createAdminPanel()); // панель сама подтянет сотрудников
+    app.append(adminModule.createAdminPanel(lastEmployees));
   }
 }
+
+// ВАЖНО: без auto-инициализации! renderDashboard вызывается из auth.js
