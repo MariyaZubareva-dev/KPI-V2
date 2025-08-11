@@ -1,86 +1,72 @@
 // js/api.js
 import { API_BASE } from './config.js';
 
-// ---------- helpers ----------
-async function parseResponse(res) {
-  // Apps Script иногда оборачивает JSON в <pre>...</pre>
-  const raw = await res.text();
-  const clean = raw.trim()
-    .replace(/^<pre[^>]*>/i, '')
-    .replace(/<\/pre>$/i, '');
-  try {
-    return JSON.parse(clean);
-  } catch {
-    // вернём строку как есть (напр., "ok")
-    return clean;
-  }
-}
-
-async function request(action, { method = 'GET', data = null, query = {} } = {}) {
+/**
+ * Универсальный запрос к Apps Script.
+ * Делает "простые" CORS-запросы: без credentials и без custom headers.
+ */
+async function request(action, { method = 'GET', params = {}, body = null } = {}) {
   const url = new URL(API_BASE);
   url.searchParams.set('action', action);
-  for (const [k, v] of Object.entries(query)) {
-    if (v !== undefined && v !== null && v !== '') {
-      url.searchParams.set(k, v);
-    }
-  }
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  });
 
-  const init = {
+  const opts = {
     method,
     mode: 'cors',
-    credentials: 'include', // если используете cookie-сессию у Apps Script
+    redirect: 'follow',
+    credentials: 'omit',          // ВАЖНО: не include!
+    headers: {}                   // без кастомных заголовков
   };
 
   if (method === 'POST') {
-    init.headers = { 'Content-Type': 'application/json' };
-    if (data) init.body = JSON.stringify(data);
+    // Отправляем как form-url-encoded, чтобы избежать preflight
+    const form = new URLSearchParams();
+    if (body && typeof body === 'object') {
+      for (const [k, v] of Object.entries(body)) {
+        form.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+      }
+    }
+    opts.body = form; // браузер сам выставит нужный Content-Type
   }
 
-  const res = await fetch(url.toString(), init);
+  const res = await fetch(url.toString(), opts);
 
   if (!res.ok) {
-    let body = '';
-    try { body = await res.text(); } catch {}
-    throw new Error(`${action} failed: ${res.status} ${res.statusText} ${body?.slice(0, 200)}`);
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status} ${res.statusText}: ${txt.slice(0, 200)}`);
   }
 
-  return parseResponse(res);
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) return res.json();
+
+  // На всякий случай: если пришёл text/plain
+  const txt = await res.text();
+  try { return JSON.parse(txt); } catch { return { ok: true, data: txt }; }
 }
 
-// ---------- API ----------
-/**
- * Прогресс (месячный/пользовательский и т.п.)
- * @param {('user'|'dept'|'all'|string)} scope
- * @param {string} userID
- */
+// === Публичные функции API ===
+
 export async function getProgress(scope, userID) {
-  return request('getProgress', { method: 'GET', query: { scope, userID } });
+  const params = { scope };
+  if (userID) params.userID = userID;
+  const data = await request('getProgress', { method: 'GET', params });
+  if (data?.ok === false) throw new Error(data.error || 'getProgress returned error');
+  return data;
 }
 
-/**
- * Запись KPI события
- * payload: { userID, date, metric, value, comment, ... }
- */
 export async function recordKPI(payload) {
-  return request('recordKPI', { method: 'POST', data: payload });
+  const data = await request('recordKPI', { method: 'POST', body: payload });
+  if (data?.ok === false) throw new Error(data.error || 'recordKPI returned error');
+  return data;
 }
 
-/**
- * Логирование произвольных событий в Sheets
- * payload: { event, userID, meta?: {...} }
- */
-export async function logEvent(payload) {
-  const enriched = { ...payload, ts: new Date().toISOString() };
-  try {
-    return await request('logEvent', { method: 'POST', data: enriched });
-  } catch (e) {
-    // чтобы UI не падал из-за логов
-    console.warn('logEvent failed:', e);
-    return { ok: false, error: e.message };
-  }
+export async function logEvent(event, extra = {}) {
+  const data = await request('logEvent', {
+    method: 'POST',
+    body: { event, extra, ts: new Date().toISOString() }
+  });
+  if (data?.ok === false) throw new Error(data.error || 'logEvent returned error');
+  return data;
 }
-
-// ---------- aliases (на случай старых импортов) ----------
-export { getProgress as apiGetProgress };
-export { recordKPI as apiRecordKPI };
-export { logEvent as apiLogEvent };
