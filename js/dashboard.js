@@ -226,6 +226,13 @@ export async function renderDashboard(user) {
   const role = String(user?.role || '').toLowerCase();
   const app  = document.getElementById('app');
   app.innerHTML = '';
+  if (!window.__kpiRecordedBound__) {
+    window.addEventListener('kpi:recorded', async () => {
+      // Перерисуем дашборд без перезагрузки страницы
+      try { await renderDashboard(user); } catch (e) { console.error(e); }
+    });
+    window.__kpiRecordedBound__ = true;
+  }
 
   // Заголовок + logout
   const title = document.createElement('h2');
