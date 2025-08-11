@@ -1,30 +1,37 @@
+// js/dashboard.js
 import { getProgress as apiGetProgress, logEvent } from './api.js';
 import { createProgressBar, createUsersTable, createLeaderboard, createLoader } from './ui-components.js';
+
+/* =========================
+   Helpers: last full week
+   ========================= */
+function formatDM(date) {
+  const d = new Date(date);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}.${mm}`;
+}
+function getLastFullWeekRange(ref = new Date()) {
+  const d = new Date(ref);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();                // 0=Sun..6=Sat
+  const daysSinceMon = (day + 6) % 7;    // Mon=0
+  const thisMon = new Date(d); thisMon.setDate(d.getDate() - daysSinceMon);
+  const lastMon = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7);
+  const lastSun = new Date(thisMon); lastSun.setDate(thisMon.getDate() - 1); lastSun.setHours(23,59,59,999);
+  return { start: lastMon, end: lastSun };
+}
 
 /**
  * Рендер дашборда по роли
  * @param {{ID?: string, Email?: string, role: string, Name?: string, name?: string, email?: string}} user
  */
-// utils наверху файла (или внутри renderDashboard перед использованием)
-function formatDM(d){
-  const dd = String(d.getDate()).padStart(2,'0');
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  return `${dd}.${mm}`;
-}
-function getLastFullWeekRange(){
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun..6=Sat
-  const daysSinceMon = (day + 6) % 7; // Mon=0
-  const thisMon = new Date(now); thisMon.setDate(now.getDate() - daysSinceMon); thisMon.setHours(0,0,0,0);
-  const lastMon = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7);
-  const lastSun = new Date(thisMon); lastSun.setDate(thisMon.getDate() - 1); lastSun.setHours(23,59,59,999);
-  return { start: lastMon, end: lastSun };
-}
 export async function renderDashboard(user) {
   const userName = user?.Name || user?.name || user?.Email || user?.email || 'Пользователь';
   const role     = String(user?.role || '').toLowerCase();
   const app      = document.getElementById('app');
 
+  // Очистка контейнера
   app.innerHTML = '';
 
   // Заголовок + logout
@@ -36,7 +43,7 @@ export async function renderDashboard(user) {
   toolbar.appendChild(title);
 
   const logoutBtn = document.createElement('button');
-  logoutBtn.className = 'btn btn-outline-secondary btn-sm';
+  logoutBtn.className = 'btn btn-outline-primary btn-sm';
   logoutBtn.textContent = 'Выйти';
   logoutBtn.addEventListener('click', async () => {
     try { await logEvent('logout', { email: user?.email || user?.Email }); } catch {}
@@ -47,6 +54,7 @@ export async function renderDashboard(user) {
 
   app.append(toolbar);
 
+  // Лоадер
   const loader = createLoader('Загружаем данные…');
   app.append(loader);
 
@@ -54,74 +62,112 @@ export async function renderDashboard(user) {
     console.log('renderDashboard, user:', user);
     console.log('renderDashboard, role:', role);
 
-    // Благодаря нормализации в api.js:
-    const deptData = await apiGetProgress('department'); // объект
-    const usersArr = await apiGetProgress('users', { period: 'prev_week' });      // массив
+    // --- Грузим данные. Пытаемся получить users_lastweek (если бэкенд поддерживает)
+    const [deptRes, usersRes, lastWeekResOrErr] = await Promise.all([
+      apiGetProgress('department'),
+      apiGetProgress('users'),
+      apiGetProgress('users_lastweek').catch(err => {
+        console.warn('[dashboard] users_lastweek не поддержан или ошибка:', err?.message || err);
+        return null;
+      })
+    ]);
 
+    // Убираем лоадер
     loader.remove();
 
-    console.log('RAW deptRes:', deptData);
-    console.log('RAW usersRes:', usersArr);
-    console.log('usersArr.length:', Array.isArray(usersArr) ? usersArr.length : 'not array');
+    console.log('RAW deptRes:', deptRes);
+    console.log('RAW usersRes:', usersRes);
+    if (lastWeekResOrErr) console.log('RAW users_lastweek:', lastWeekResOrErr);
 
-    const employees = Array.isArray(usersArr)
-      ? usersArr.filter(u => String(u?.role ?? '').trim().toLowerCase() === 'employee')
-      : [];
+    // Распаковка
+    const deptData = deptRes?.data ?? deptRes;             // объект: { monthPercent, ... }
+    const usersRaw = usersRes?.data ?? usersRes;           // массив всех пользователей (текущие week/month)
+    const lastWeekRaw = lastWeekResOrErr
+      ? (lastWeekResOrErr?.data ?? lastWeekResOrErr)       // массив пользователей за прошлую неделю
+      : null;
 
-    console.log('employees.length:', employees.length);
+    // Списки сотрудников
+    const allUsers = Array.isArray(usersRaw) ? usersRaw : [];
+    const employeesAll = allUsers.filter(u => String(u.role || '').toLowerCase() === 'employee');
 
-    // 1) Прогресс отдела (месяц)
+    const lastWeekUsers = Array.isArray(lastWeekRaw) ? lastWeekRaw : [];
+    const employeesLastWeek = lastWeekUsers.filter(u => String(u.role || '').toLowerCase() === 'employee');
+
+    console.log('usersArr.length:', allUsers.length);
+    console.log('employees (all) .length:', employeesAll.length);
+    if (lastWeekRaw) {
+      console.log('employees (last week) .length:', employeesLastWeek.length);
+    }
+
+    /* === 1) Прогресс отдела (месяц) === */
     const deptSection = document.createElement('section');
     deptSection.id = 'dept-section';
+
     const deptTitle = document.createElement('h3');
     deptTitle.textContent = 'Прогресс отдела (месяц)';
     deptSection.append(deptTitle);
+
     const monthPercent = Number(deptData?.monthPercent ?? 0);
     deptSection.append(createProgressBar(monthPercent, 'department'));
     app.append(deptSection);
 
-    // 2) Лидерборды
+    /* === 2) Лидерборды === */
+    // 2.1 ТОП-3 за прошлую неделю (если есть данные; иначе — используем текущую нед.)
     const leaderWeek = document.createElement('section');
     leaderWeek.id = 'leader-week';
+
     const h4Week = document.createElement('h4');
     h4Week.textContent = 'ТОП-3 за неделю';
+
     const cap = document.createElement('div');
     cap.className = 'kpi-caption';
     const { start, end } = getLastFullWeekRange();
     cap.textContent = `за прошлую неделю (Пн ${formatDM(start)} — Вс ${formatDM(end)})`;
-    leaderWeek.append(h4Week, createLeaderboard(employees, 'week'));
-    app.append(leaderWeek);
 
+    // Источник данных для ТОП-3 «неделя»: предпочитаем прошлую неделю, если бэкенд вернул массив
+    const dataForWeekTop = employeesLastWeek.length ? employeesLastWeek : employeesAll;
+
+    leaderWeek.append(h4Week, cap, createLeaderboard(dataForWeekTop, 'week'));
+    app.append(leaderWeek);
+    console.log('CAPTION ADDED:', cap.textContent);
+
+    // 2.2 ТОП-3 за месяц (используем весь массив сотрудников)
     const leaderMonth = document.createElement('section');
     leaderMonth.id = 'leader-month';
+
     const h4Month = document.createElement('h4');
     h4Month.textContent = 'ТОП-3 за месяц';
-    leaderMonth.append(h4Month, createLeaderboard(employees, 'month'));
+
+    leaderMonth.append(h4Month, createLeaderboard(employeesAll, 'month'));
     app.append(leaderMonth);
 
-    // 3) Таблица пользователей
+    /* === 3) Таблица пользователей === */
     const tableSection = document.createElement('section');
     tableSection.id = 'users-table';
+
     const tableTitle = document.createElement('h4');
     tableTitle.textContent = 'Сотрудники и баллы';
-    tableSection.append(tableTitle, createUsersTable(employees));
+
+    tableSection.append(tableTitle, createUsersTable(employeesAll));
     app.append(tableSection);
 
-    // 4) Admin-панель
+    /* === 4) Admin-панель — только для admin === */
     if (role === 'admin') {
-      if (employees.length) {
+      if (employeesAll.length) {
         console.log('Отрисовываем Admin-панель');
         const adminModule = await import('./admin-panel.js');
-        app.append(adminModule.createAdminPanel(employees));
+        app.append(adminModule.createAdminPanel(employeesAll));
       } else {
         console.warn('Admin-панель не показана: список сотрудников пуст или не получен.');
       }
     }
 
+    // Лог события просмотра
     try { await logEvent('dashboard_view', { email: user?.email || user?.Email }); } catch {}
 
   } catch (err) {
-    loader.remove();
+    // Снимем лоадер, если ещё висит
+    try { loader.remove(); } catch {}
     console.error('Ошибка при рендере дашборда:', err);
     const alert = document.createElement('div');
     alert.className = 'alert alert-danger';
@@ -131,4 +177,4 @@ export async function renderDashboard(user) {
   }
 }
 
-// ВАЖНО: без auto-инициализации. Вызов делаем из auth.js после логина.
+// ВАЖНО: без auto-DOMContentLoaded. renderDashboard вызывается из auth.js
