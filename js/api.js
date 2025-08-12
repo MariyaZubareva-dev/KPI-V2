@@ -62,12 +62,12 @@ export async function getProgress(scope, userID) {
  * @param {object|string|number} userIDOrObj - либо объект, либо userID
  * Объект формата: { userID, kpiId, score, date?, actorEmail? }
  */
-export async function recordKPI(userIDOrObj, kpiId, score, date) {
+export async function recordKPI(userID, kpiId, score, date) {
   let userID, actorEmail;
-  if (typeof userIDOrObj === 'object' && userIDOrObj !== null) {
-    ({ userID, kpiId, score, date, actorEmail } = userIDOrObj);
+  if (typeof userID === 'object' && userID !== null) {
+    ({ userID, kpiId, score, date, actorEmail } = userID);
   } else {
-    userID = userIDOrObj;
+    userID = userID;
   }
   console.log('[recordKPI] actorEmail =', actorEmail);
 
@@ -75,7 +75,7 @@ export async function recordKPI(userIDOrObj, kpiId, score, date) {
   if (!actorEmail) {
     try {
       const u = JSON.parse(localStorage.getItem('user')) || {};
-      actorEmail = u.email || u.Email || '';
+      actorEmail = u?.email || u?.Email || '';
     } catch { actorEmail = ''; }
   }
 
