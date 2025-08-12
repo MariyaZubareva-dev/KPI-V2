@@ -17,7 +17,6 @@ export async function renderDashboard(user) {
   const userEmail = (user?.email || user?.Email || '').toLowerCase();
   const app       = document.getElementById('app');
 
-  // Очистка
   app.innerHTML = '';
 
   // Заголовок + logout
@@ -39,34 +38,30 @@ export async function renderDashboard(user) {
   toolbar.appendChild(logoutBtn);
   app.appendChild(toolbar);
 
-  // Контейнер панели сотрудника (только для employee)
+  // Контейнер панели сотрудника
   const employeeSection = document.createElement('section');
   employeeSection.id = 'employee-section';
 
-  // Общие разделы страницы
+  // Общие разделы
   const deptSection    = document.createElement('section'); deptSection.id    = 'dept-section';
   const leaderWeekSec  = document.createElement('section'); leaderWeekSec.id  = 'leader-week';
   const leaderMonthSec = document.createElement('section'); leaderMonthSec.id = 'leader-month';
   const tableSection   = document.createElement('section'); tableSection.id   = 'users-table';
 
-  // Вкладываем секции в DOM: для employee — без общего deptSection (чтобы не дублировать)
   if (role === 'employee') {
     app.append(employeeSection, leaderWeekSec, leaderMonthSec, tableSection);
   } else {
     app.append(deptSection, leaderWeekSec, leaderMonthSec, tableSection);
   }
 
-  // Лоадер
   const loader = createLoader('Загружаем данные…');
   app.append(loader);
 
-  // для админ-панели
   let lastEmployees = [];
 
-  // ===== helpers =====
   function getLastFullWeekBounds() {
     const now = new Date();
-    const day = now.getDay(); // 0..6 (0 — вс)
+    const day = now.getDay(); // 0..6
     const mondayThisWeek = new Date(now);
     const diffToMonday = (day === 0 ? -6 : 1 - day);
     mondayThisWeek.setDate(now.getDate() + diffToMonday);
@@ -81,17 +76,11 @@ export async function renderDashboard(user) {
 
     return { start, end };
   }
-
-  function fmtDDMM(d) {
-    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-  }
-
+  function fmtDDMM(d) { return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }); }
   function buildLeaderWeekHeader() {
     const wrap = document.createElement('div');
-    const h4 = document.createElement('h4');
-    h4.textContent = 'ТОП-3 за неделю';
-    const sub = document.createElement('div');
-    sub.className = 'text-tertiary caption mt-1';
+    const h4 = document.createElement('h4'); h4.textContent = 'ТОП-3 за неделю';
+    const sub = document.createElement('div'); sub.className = 'text-tertiary caption mt-1';
     const { start, end } = getLastFullWeekBounds();
     sub.textContent = `за прошлую неделю (Пн ${fmtDDMM(start)} — Вс ${fmtDDMM(end)})`;
     wrap.append(h4, sub);
@@ -101,7 +90,6 @@ export async function renderDashboard(user) {
   function renderEmployeePanel({ deptData, usersArr }) {
     if (role !== 'employee') return;
 
-    // найдём себя по email
     const me = Array.isArray(usersArr)
       ? usersArr.find(u => (u.email || '').toLowerCase() === userEmail)
       : null;
@@ -123,7 +111,6 @@ export async function renderDashboard(user) {
     const personalWeekPoints  = Number(me.week || 0);
     const personalMonthPoints = Number(me.month || 0);
 
-    // Достаём агрегаты из департамента
     const employeesCount  = Number(deptData?.employeesCount || 1);
     const maxWeekDept     = Number(deptData?.maxWeek || 0);
     const perUserMaxWeek  = (maxWeekDept / (employeesCount || 1)) || 1;
@@ -134,14 +121,14 @@ export async function renderDashboard(user) {
     const personalMonthPercent = Math.min(100, Math.round((personalMonthPoints / perUserMaxMonth) * 100));
     const deptMonthPercent     = Math.min(100, Math.round(Number(deptData?.monthPercent || 0)));
 
-    // 1) Сначала — прогресс отдела (месяц)
+    // 1) ВЕРХОМ — прогресс отдела (месяц)
     const deptBlock = document.createElement('div');
     const h4d = document.createElement('h4');
     h4d.textContent = 'Прогресс отдела — месяц (текущий)';
     deptBlock.append(h4d, createProgressBar(deptMonthPercent, 'department'));
     employeeSection.append(deptBlock);
 
-    // 2) Затем — два личных прогресс-бара (неделя/месяц)
+    // 2) Личные прогрессы
     const grid = document.createElement('div');
     grid.className = 'row g-4';
 
@@ -177,12 +164,11 @@ export async function renderDashboard(user) {
 
     lastEmployees = employees;
 
-    // Панель сотрудника (включает департамент сверху)
     if (role === 'employee') {
       renderEmployeePanel({ deptData, usersArr });
     }
 
-    // 1) Прогресс отдела (месяц) — только для НЕ employee (чтобы не было дубля)
+    // Для не-employee — общий прогресс отдела (чтобы не дублировать у employee)
     if (role !== 'employee') {
       deptSection.innerHTML = '';
       const deptTitle = document.createElement('h3');
@@ -190,7 +176,6 @@ export async function renderDashboard(user) {
       deptSection.append(deptTitle, createProgressBar(Number(deptData?.monthPercent ?? 0), 'department'));
     }
 
-    // 2) Лидерборды
     leaderWeekSec.innerHTML = '';
     leaderWeekSec.append(buildLeaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
 
@@ -199,14 +184,12 @@ export async function renderDashboard(user) {
     h4Month.textContent = 'ТОП-3 за месяц';
     leaderMonthSec.append(h4Month, createLeaderboard(employees, 'month'));
 
-    // 3) Таблица сотрудников
     tableSection.innerHTML = '';
     const tableTitle = document.createElement('h4');
     tableTitle.textContent = 'Сотрудники и баллы';
     tableSection.append(tableTitle, createUsersTable(employees));
   }
 
-  // Первичная загрузка
   try {
     await refreshDashboardData();
     try { await logEvent('dashboard_view', { email: user?.email || user?.Email }); } catch {}
@@ -214,16 +197,14 @@ export async function renderDashboard(user) {
     loader.remove();
   }
 
-  // Моментальный рефреш после отметки KPI (админ-панель диспатчит событие)
-  window.addEventListener('kpi-updated', async () => {
+  // Слушаем событие из админ-панели
+  document.addEventListener('kpi:recorded', async () => {
     await refreshDashboardData();
   });
 
-  // Если админ — подключаем админ-панель
   if (role === 'admin') {
     const adminModule = await import('./admin-panel.js');
     app.append(adminModule.createAdminPanel(lastEmployees));
   }
 }
-
-// ВАЖНО: без auto-инициализации! renderDashboard вызывается из auth.js
+// без авто-инициализации — вызывается из auth.js

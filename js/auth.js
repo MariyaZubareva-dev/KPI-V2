@@ -1,9 +1,10 @@
+// js/auth.js
 import { API_BASE } from './config.js';
 import { renderDashboard } from './dashboard.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginSection = document.getElementById('login-section');
-  const user = JSON.parse(localStorage.getItem('user'));
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
 
   if (user) {
     if (loginSection) loginSection.style.display = 'none';
@@ -27,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         url.searchParams.set('email', email);
         url.searchParams.set('password', password);
 
-        const res = await fetch(url);
+        const res = await fetch(url.toString(), { credentials: 'omit' });
         const data = await res.json();
 
         if (!data.success) {
@@ -35,13 +36,13 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        const user = {
+        const nextUser = {
           id:    data.email,
           email: data.email,
           role:  data.role,
           name:  data.name
         };
-        localStorage.setItem('user', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(nextUser));
         location.reload();
       } catch (e) {
         console.error('Ошибка авторизации:', e);

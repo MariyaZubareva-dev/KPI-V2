@@ -1,3 +1,4 @@
+// js/api.js
 import { API_BASE } from './config.js';
 
 // ---------- helpers ----------
@@ -28,12 +29,10 @@ async function request(action, { method = 'GET', params = {}, body = null } = {}
   }
 
   const res = await fetch(url.toString(), init);
-
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`${action} failed: ${res.status} ${res.statusText} ${txt.slice(0, 200)}`);
   }
-
   return parseResponse(res);
 }
 
@@ -52,45 +51,41 @@ export async function getProgress(scope, userID) {
   if (raw?.ok === false || raw?.success === false) {
     throw new Error(raw?.error || raw?.message || 'getProgress returned error');
   }
-
   if (scope === 'department') return raw?.data ?? raw;
   return Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
 }
 
 /**
  * Запись KPI события
- * @param {object|string|number} userIDOrObj - либо объект, либо userID
- * Объект формата: { userID, kpiId, score, date?, actorEmail? }
+ * @param {object|string|number} arg1 - либо объект, либо userID
+ * Объект формата: { userID, kpiId, score?, date?, actorEmail? }
  */
-export async function recordKPI(userID, kpiId, score, date) {
-  let userID, actorEmail;
-  if (typeof userID === 'object' && userID !== null) {
-    ({ userID, kpiId, score, date, actorEmail } = userID);
+export async function recordKPI(arg1, kpiId, score, date, actorEmail) {
+  let payload;
+  if (typeof arg1 === 'object' && arg1 !== null) {
+    payload = { ...arg1 };
   } else {
-    userID = userID;
+    payload = { userID: String(arg1), kpiId, score, date, actorEmail };
   }
-  console.log('[recordKPI] actorEmail =', actorEmail);
 
-  // если actorEmail не передали явно — возьмём из localStorage
-  if (!actorEmail) {
+  // если actorEmail не передали — берём из localStorage
+  if (!payload.actorEmail) {
     try {
       const u = JSON.parse(localStorage.getItem('user')) || {};
-      actorEmail = u.email || u.Email || '';
-    } catch { actorEmail = ''; }
+      payload.actorEmail = u?.email || u?.Email || '';
+    } catch {
+      payload.actorEmail = '';
+    }
   }
 
-  const params = { userID, kpiId, score, date, actorEmail };
-  const raw = await request('recordKPI', { method: 'GET', params });
+  const raw = await request('recordKPI', { method: 'GET', params: payload });
   if (raw?.ok === false || raw?.success === false) {
     throw new Error(raw?.error || raw?.message || 'recordKPI returned error');
   }
   return raw?.data ?? raw;
 }
 
-
-/**
- * Логирование событий в Sheets
- */
+/** Логирование событий в Sheets */
 export async function logEvent(event, extra = {}) {
   const params = {
     event,
@@ -106,10 +101,7 @@ export async function logEvent(event, extra = {}) {
   return raw?.data ?? raw;
 }
 
-// алиасы
-export { getProgress as apiGetProgress, recordKPI as apiRecordKPI, logEvent as apiLogEvent };
-
-// === Доп. обёртки для удобства фронта ===
+// Удобные обёртки (если нужны в будущем)
 export async function getUserKPIs(userID, period = 'this_week') {
   const params = { scope: 'user', userID, period };
   const raw = await request('getProgress', { method: 'GET', params });
@@ -120,7 +112,6 @@ export async function getUserKPIs(userID, period = 'this_week') {
 }
 
 export async function getUsersAggregate(period = 'this_week') {
-  // Бэкенд поддерживает и параметр period для scope=users, и отдельный scope=users_lastweek
   const params = (period === 'prev_week') ? { scope: 'users_lastweek' } : { scope: 'users' };
   const raw = await request('getProgress', { method: 'GET', params });
   if (raw?.ok === false || raw?.success === false) {
@@ -129,3 +120,6 @@ export async function getUsersAggregate(period = 'this_week') {
   const data = raw?.data ?? raw;
   return Array.isArray(data) ? data : [];
 }
+
+// алиасы на случай старых импортов
+export { getProgress as apiGetProgress, recordKPI as apiRecordKPI, logEvent as apiLogEvent };

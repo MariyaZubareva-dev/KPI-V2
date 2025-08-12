@@ -4,10 +4,8 @@ import { getProgress, recordKPI, logEvent } from './api.js';
 /**
  * Создаёт Admin-панель для отметки KPI
  * @param {Array<{id:string|number, name:string, email:string, role:string}>} usersData
- * @returns {HTMLElement}
  */
 export function createAdminPanel(usersData = []) {
-  // оставляем только сотрудников (если вдруг пришло больше ролей)
   const employees = Array.isArray(usersData)
     ? usersData.filter(u => String(u.role || '').toLowerCase() === 'employee')
     : [];
@@ -20,7 +18,6 @@ export function createAdminPanel(usersData = []) {
   title.textContent = 'Admin-панель: отметка KPI';
   container.appendChild(title);
 
-  // селектор пользователя
   const selectWrap = document.createElement('div');
   selectWrap.className = 'mb-3';
   const select = document.createElement('select');
@@ -35,17 +32,14 @@ export function createAdminPanel(usersData = []) {
   selectWrap.appendChild(select);
   container.appendChild(selectWrap);
 
-  // контейнер KPI
   const kpiList = document.createElement('div');
   kpiList.id = 'kpi-list';
   container.appendChild(kpiList);
 
-  // загрузка KPI для выбранного пользователя
   select.addEventListener('change', () => {
     loadKpisForUser(select.value, kpiList);
   });
 
-  // первичная загрузка
   if (employees.length) {
     select.value = select.options[0].value;
     loadKpisForUser(select.value, kpiList);
@@ -56,12 +50,8 @@ export function createAdminPanel(usersData = []) {
   return container;
 }
 
-/**
- * Рендерит список KPI для пользователя
- * @param {string|number} userID
- * @param {HTMLElement} container
- */
-async function loadKpisForUser(userID, container) {
+/** Рендерит список KPI для пользователя */
+async function loadKpisForUser(targetUserId, container) {
   container.innerHTML = `
     <div class="d-flex align-items-center gap-2 my-2">
       <div class="spinner-border" role="status" aria-hidden="true"></div>
@@ -70,14 +60,11 @@ async function loadKpisForUser(userID, container) {
   `;
 
   try {
-    // получаем актуальное состояние KPI за текущую неделю
-    const res = await getProgress('user', userID);
+    const res = await getProgress('user', targetUserId);
     const kpis = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
 
-    // сортировка по весу (по убыванию)
     kpis.sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
 
-    // рендер
     container.innerHTML = '';
     if (!kpis.length) {
       container.innerHTML = `<div class="text-secondary">Для пользователя нет KPI.</div>`;
@@ -115,48 +102,39 @@ async function loadKpisForUser(userID, container) {
       row.append(left, right);
       list.appendChild(row);
 
-      // === ВАЖНО: обработчик отметки KPI с actorEmail ===
       input.addEventListener('change', async () => {
-        if (!input.checked) return; // не поддерживаем "снять" отметку
+        if (!input.checked) return;
         input.disabled = true;
 
-        const currentUser = safeCurrentUser();
-        const actorEmail = currentUser?.email || currentUser?.Email || '';
+        // кто отмечает
+        let actorEmail = '';
+        try {
+          const u = JSON.parse(localStorage.getItem('user') || '{}');
+          actorEmail = u?.email || u?.Email || '';
+        } catch {}
 
         try {
-          // отправляем только идентификаторы (вес игнорируется на бэке)
           await recordKPI({
-            userID: String(userID),
+            userID: String(targetUserId),
             kpiId: String(kpi.KPI_ID),
             actorEmail
-            // date — опционально (бэк подставит сегодня)
           });
 
-          // лог на клиенте (опционально)
           try {
             await logEvent('kpi_recorded', {
-              userID: String(userID),
+              userID: String(targetUserId),
               kpiId: String(kpi.KPI_ID),
-              score: kpi.weight, // purely for UI log, не влияет на бэк
+              score: kpi.weight,
               actorEmail
             });
           } catch {}
 
-          // локальный бейдж успеха
-          right.innerHTML = '';
-          const badge = document.createElement('span');
-          badge.className = 'badge text-bg-success';
-          badge.textContent = 'отмечено';
-          right.appendChild(badge);
+          await loadKpisForUser(targetUserId, container);
 
-          // перезагрузим список KPI, чтобы получить актуальный done
-          await loadKpisForUser(userID, container);
-
-          // уведомим дашборд для авто-рефреша прогрессов
+          // уведомим дашборд
           document.dispatchEvent(new CustomEvent('kpi:recorded', {
-            detail: { userID: String(userID), kpiId: String(kpi.KPI_ID) }
+            detail: { userID: String(targetUserId), kpiId: String(kpi.KPI_ID) }
           }));
-
         } catch (err) {
           console.error('Ошибка записи KPI:', err);
           alert('Не удалось записать KPI. Подробности — в консоли.');
@@ -170,13 +148,5 @@ async function loadKpisForUser(userID, container) {
   } catch (err) {
     console.error('Ошибка загрузки KPI пользователя:', err);
     container.innerHTML = `<div class="alert alert-danger">Не удалось загрузить список KPI.</div>`;
-  }
-}
-
-function safeCurrentUser() {
-  try {
-    return JSON.parse(localStorage.getItem('user') || '{}');
-  } catch {
-    return {};
   }
 }

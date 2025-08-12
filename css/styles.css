@@ -40,7 +40,7 @@ h3, .h3 { font-size: 28px; line-height: 36px; font-weight: 500; margin: 0 0 12px
 h4, .h4 { font-size: 24px; line-height: 32px; font-weight: 500; margin: 0 0 8px; }
 h5, .h5 { font-size: 20px; line-height: 28px; font-weight: 500; margin: 0 0 8px; }
 
-/* Mobile adjustments */
+/* Mobile */
 @media (max-width: 576px){
   h1, .h1 { font-size: 32px; line-height: 40px; }
   h2, .h2 { font-size: 28px; line-height: 36px; }
@@ -66,7 +66,6 @@ h5, .h5 { font-size: 20px; line-height: 28px; font-weight: 500; margin: 0 0 8px;
   border-color: var(--accent-primary-hover);
   color: #fff;
 }
-
 .btn-outline-primary{
   color: var(--accent-primary);
   border-color: var(--accent-primary);
@@ -77,7 +76,6 @@ h5, .h5 { font-size: 20px; line-height: 28px; font-weight: 500; margin: 0 0 8px;
   color: var(--accent-primary);
   border-color: var(--accent-primary);
 }
-
 /* Secondary button */
 .btn-secondary{
   background: var(--accent-secondary);
@@ -91,24 +89,18 @@ h5, .h5 { font-size: 20px; line-height: 28px; font-weight: 500; margin: 0 0 8px;
 }
 
 /* Links */
-a, .link{
-  color: var(--link);
-  text-decoration: none;
-}
+a, .link{ color: var(--link); text-decoration: none; }
 a:hover, .link:hover{ text-decoration: underline; }
 
 /* Table */
-.table thead th{
-  background: var(--bg-100);
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border) !important;
+.table-top td { font-weight: 600; }
+.table thead th {
+  background: #F1F1F1;
+  color: #191919;
+  border-bottom: 1px solid #E0E0E0;
 }
-.table tbody tr{
-  border-top: 1px solid var(--border);
-}
-.table-striped>tbody>tr:nth-of-type(odd)>* {
-  background: #FAFAFA;
-}
+.table tbody tr{ border-top: 1px solid var(--border); }
+.table-striped>tbody>tr:nth-of-type(odd)>* { background: #FAFAFA; }
 
 /* Progress bar color bands */
 .progress .progress-bar.bar-critical{ background: var(--critical); }

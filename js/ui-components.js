@@ -1,8 +1,6 @@
 // js/ui-components.js
 
-/**
- * Лоадер
- */
+/** Лоадер */
 export function createLoader(text = 'Загружаем данные…') {
   const box = document.createElement('div');
   box.className = 'd-flex align-items-center gap-2 my-3';
@@ -13,11 +11,7 @@ export function createLoader(text = 'Загружаем данные…') {
   return box;
 }
 
-/**
- * Прогресс-бар с иконкой-персонажем
- * @param {number} percent 0–100
- * @param {'department'|'user'} size
- */
+/** Прогресс-бар с иконкой-персонажем */
 export function createProgressBar(percent, size = 'department') {
   const p = Math.max(0, Math.min(100, Number(percent) || 0));
 
@@ -74,7 +68,7 @@ function createCharacterImage(percent) {
     img.src = './images/kopatych.png';
     img.title = 'Зима впроголодь (≥30)';
   } else if (percent < 70) {
-    img.src = './images/karkarych-sovunya.png';
+    img.src = './images/karkarych-sовunya.png';
     img.title = 'Минимум, чтобы выжить (≥50)';
   } else {
     img.src = './images/nyusha.png';
@@ -94,9 +88,7 @@ function createCharacterImage(percent) {
   return img;
 }
 
-/**
- * Таблица сотрудников
- */
+/** Таблица сотрудников */
 export function createUsersTable(users) {
   const safe = Array.isArray(users) ? users : [];
   if (safe.length === 0) {
@@ -134,11 +126,7 @@ export function createUsersTable(users) {
   return table;
 }
 
-/**
- * ТОП-3 лидеров
- * @param {Array<{name:string, week?:number, month?:number}>} users
- * @param {'week'|'month'} period
- */
+/** ТОП-3 лидеров */
 export function createLeaderboard(users, period = 'week') {
   const safe = Array.isArray(users) ? users : [];
   const sorted = safe

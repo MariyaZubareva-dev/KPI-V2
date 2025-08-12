@@ -3,27 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-
   <title>KPI Dashboard</title>
 
-  <!-- Bootstrap -->
-  <link 
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" 
-    rel="stylesheet" 
-    integrity="sha384-..." 
-    crossorigin="anonymous"
-  />
-
-  <!-- Space Grotesk -->
+  <!-- Google Font -->
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 
-  <!-- Styles -->
-  <link rel="stylesheet" href="./css/styles.css"/>
+  <!-- Bootstrap CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    crossorigin="anonymous"
+  />
 
-  <link rel="icon" type="image/png" href="./images/favicon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="./images/favicon-32.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="./images/apple-touch-icon.png">
+  <!-- App styles -->
+  <link rel="stylesheet" href="./css/styles.css" />
 </head>
 <body>
   <div id="app" class="container my-5">
@@ -39,11 +33,7 @@
     </div>
   </div>
 
-  <!-- Scripts -->
-  <script type="module" src="js/auth.js"></script>
-  <script type="module" src="js/api.js"></script>
-  <script type="module" src="js/ui-components.js"></script>
-  <script type="module" src="js/dashboard.js"></script>
-  <script type="module" src="js/admin-panel.js"></script>
+  <!-- ВАЖНО: только одна точка входа -->
+  <script type="module" src="./js/auth.js"></script>
 </body>
 </html>
