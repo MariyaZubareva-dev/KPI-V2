@@ -1,142 +1,182 @@
 // js/admin-panel.js
-import { recordKPI, getProgress, logEvent } from './api.js';
+import { getProgress, recordKPI, logEvent } from './api.js';
 
 /**
- * Админ-панель: сама грузит сотрудников и KPI
+ * Создаёт Admin-панель для отметки KPI
+ * @param {Array<{id:string|number, name:string, email:string, role:string}>} usersData
+ * @returns {HTMLElement}
  */
-export function createAdminPanel() {
+export function createAdminPanel(usersData = []) {
+  // оставляем только сотрудников (если вдруг пришло больше ролей)
+  const employees = Array.isArray(usersData)
+    ? usersData.filter(u => String(u.role || '').toLowerCase() === 'employee')
+    : [];
+
   const container = document.createElement('section');
   container.id = 'admin-panel';
   container.className = 'mt-5';
 
   const title = document.createElement('h3');
   title.textContent = 'Admin-панель: отметка KPI';
-  container.append(title);
+  container.appendChild(title);
 
-  // Селектор сотрудника
+  // селектор пользователя
   const selectWrap = document.createElement('div');
   selectWrap.className = 'mb-3';
   const select = document.createElement('select');
   select.id = 'user-select';
   select.className = 'form-select';
-  selectWrap.append(select);
-  container.append(selectWrap);
+  employees.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = String(u.id ?? u.ID ?? u.Email ?? u.email);
+    opt.textContent = u.name ?? u.Name ?? u.Email ?? u.email ?? String(u.id);
+    select.appendChild(opt);
+  });
+  selectWrap.appendChild(select);
+  container.appendChild(selectWrap);
 
-  // Контейнер KPI
+  // контейнер KPI
   const kpiList = document.createElement('div');
   kpiList.id = 'kpi-list';
-  container.append(kpiList);
+  container.appendChild(kpiList);
 
-  // Смена сотрудника -> перезагрузить KPI
+  // загрузка KPI для выбранного пользователя
   select.addEventListener('change', () => {
-    select.setAttribute('data-selected', select.value);
     loadKpisForUser(select.value, kpiList);
   });
 
-  // Первичная загрузка сотрудников
-  loadEmployees(select, kpiList);
+  // первичная загрузка
+  if (employees.length) {
+    select.value = select.options[0].value;
+    loadKpisForUser(select.value, kpiList);
+  } else {
+    kpiList.innerHTML = `<div class="text-secondary">Нет сотрудников с ролью employee.</div>`;
+  }
 
   return container;
 }
 
-/** Подтягивает сотрудников и заполняет селект */
-async function loadEmployees(select, kpiList) {
-  select.innerHTML = '';
-  kpiList.textContent = 'Загрузка сотрудников…';
+/**
+ * Рендерит список KPI для пользователя
+ * @param {string|number} userID
+ * @param {HTMLElement} container
+ */
+async function loadKpisForUser(userID, container) {
+  container.innerHTML = `
+    <div class="d-flex align-items-center gap-2 my-2">
+      <div class="spinner-border" role="status" aria-hidden="true"></div>
+      <span>Загружаем KPI…</span>
+    </div>
+  `;
 
   try {
-    const users = await getProgress('users'); // api.js уже нормализует в массив
-    const employees = (Array.isArray(users) ? users : [])
-      .filter(u => String(u.role || '').toLowerCase() === 'employee' && (u.active === undefined || u.active));
+    // получаем актуальное состояние KPI за текущую неделю
+    const res = await getProgress('user', userID);
+    const kpis = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
 
-    // Сортировка по имени
-    employees.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru', { sensitivity: 'base' }));
+    // сортировка по весу (по убыванию)
+    kpis.sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
 
-    if (!employees.length) {
-      kpiList.innerHTML = '<div class="text-secondary">Нет сотрудников с ролью employee.</div>';
+    // рендер
+    container.innerHTML = '';
+    if (!kpis.length) {
+      container.innerHTML = `<div class="text-secondary">Для пользователя нет KPI.</div>`;
       return;
     }
 
-    // Заполняем селект
-    for (const u of employees) {
-      const opt = document.createElement('option');
-      opt.value = String(u.id ?? u.ID ?? u.Email ?? u.email ?? '');
-      opt.textContent = u.name ?? u.Name ?? u.email ?? u.Email ?? '(без имени)';
-      select.append(opt);
-    }
+    const list = document.createElement('div');
+    kpis.forEach(kpi => {
+      const row = document.createElement('label');
+      row.className = 'd-flex align-items-center justify-content-between mb-2 gap-3';
 
-    // Выбираем предыдущего/первого
-    const prev = select.getAttribute('data-selected');
-    if (prev && [...select.options].some(o => o.value === prev)) {
-      select.value = prev;
-    } else {
-      select.value = select.options[0].value;
-    }
+      const left = document.createElement('div');
+      left.className = 'd-flex align-items-center gap-2';
 
-    // Загружаем KPI выбранного сотрудника
-    await loadKpisForUser(select.value, kpiList);
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.dataset.kpiId = String(kpi.KPI_ID);
+      input.dataset.weight = String(kpi.weight ?? 0);
+      input.disabled = !!kpi.done;
+      input.checked = !!kpi.done;
+
+      const name = document.createElement('span');
+      name.textContent = `${kpi.name} (${kpi.weight})`;
+
+      left.append(input, name);
+
+      const right = document.createElement('div');
+      if (kpi.done) {
+        const badge = document.createElement('span');
+        badge.className = 'badge text-bg-success';
+        badge.textContent = 'выполнено';
+        right.appendChild(badge);
+      }
+
+      row.append(left, right);
+      list.appendChild(row);
+
+      // === ВАЖНО: обработчик отметки KPI с actorEmail ===
+      input.addEventListener('change', async () => {
+        if (!input.checked) return; // не поддерживаем "снять" отметку
+        input.disabled = true;
+
+        const currentUser = safeCurrentUser();
+        const actorEmail = currentUser?.email || currentUser?.Email || '';
+
+        try {
+          // отправляем только идентификаторы (вес игнорируется на бэке)
+          await recordKPI({
+            userID: String(userID),
+            kpiId: String(kpi.KPI_ID),
+            actorEmail
+            // date — опционально (бэк подставит сегодня)
+          });
+
+          // лог на клиенте (опционально)
+          try {
+            await logEvent('kpi_recorded', {
+              userID: String(userID),
+              kpiId: String(kpi.KPI_ID),
+              score: kpi.weight, // purely for UI log, не влияет на бэк
+              actorEmail
+            });
+          } catch {}
+
+          // локальный бейдж успеха
+          right.innerHTML = '';
+          const badge = document.createElement('span');
+          badge.className = 'badge text-bg-success';
+          badge.textContent = 'отмечено';
+          right.appendChild(badge);
+
+          // перезагрузим список KPI, чтобы получить актуальный done
+          await loadKpisForUser(userID, container);
+
+          // уведомим дашборд для авто-рефреша прогрессов
+          document.dispatchEvent(new CustomEvent('kpi:recorded', {
+            detail: { userID: String(userID), kpiId: String(kpi.KPI_ID) }
+          }));
+
+        } catch (err) {
+          console.error('Ошибка записи KPI:', err);
+          alert('Не удалось записать KPI. Подробности — в консоли.');
+          input.checked = false;
+          input.disabled = false;
+        }
+      });
+    });
+
+    container.appendChild(list);
   } catch (err) {
-    console.error('Ошибка загрузки сотрудников:', err);
-    kpiList.innerHTML = '<div class="text-danger">Не удалось загрузить список сотрудников.</div>';
+    console.error('Ошибка загрузки KPI пользователя:', err);
+    container.innerHTML = `<div class="alert alert-danger">Не удалось загрузить список KPI.</div>`;
   }
 }
 
-/** Загружает и рендерит KPI выбранного сотрудника */
-async function loadKpisForUser(userID, container) {
-  container.innerHTML = 'Загрузка KPI…';
+function safeCurrentUser() {
   try {
-    const raw = await getProgress('user', userID);
-    const kpis = Array.isArray(raw) ? raw : (raw?.data ?? []);
-
-    const current = JSON.parse(localStorage.getItem('user') || '{}');
-    const actorEmail = current.email || current.Email || '';
-
-    container.innerHTML = '';
-
-    kpis
-      .slice()
-      .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0)) // по убыванию веса
-      .forEach(kpi => {
-        const row = document.createElement('label');
-        row.className = 'd-block mb-2';
-        row.innerHTML = `
-          <input type="checkbox" ${kpi.done ? 'checked disabled' : ''}>
-          ${kpi.name} <span class="text-tertiary">(${kpi.weight})</span>
-        `;
-        const input = row.querySelector('input');
-
-        input.addEventListener('change', async () => {
-          input.disabled = true;
-          try {
-            await recordKPI({ userID, kpiId: kpi.KPI_ID, score: kpi.weight, actorEmail });
-            await logEvent('kpi_recorded', { userID, kpiId: kpi.KPI_ID, score: kpi.weight, actorEmail });
-
-            // Сообщаем дашборду, чтобы он обновил прогрессы и таблицы
-            window.dispatchEvent(new CustomEvent('kpi-updated', {
-              detail: { userID, kpiId: kpi.KPI_ID, score: kpi.weight }
-            }));
-
-            // Обновляем список KPI для этого юзера
-            await loadKpisForUser(userID, container);
-          } catch (err) {
-            console.error('Ошибка записи KPI:', err);
-            alert('Не удалось записать KPI. Детали — в консоли.');
-            input.checked = false;
-            input.disabled = false;
-          }
-        });
-
-        container.append(row);
-      });
-
-    if (!kpis.length) {
-      const empty = document.createElement('div');
-      empty.className = 'text-secondary';
-      empty.textContent = 'Нет KPI для этого пользователя.';
-      container.append(empty);
-    }
-  } catch (err) {
-    console.error('Ошибка загрузки KPI:', err);
-    container.innerHTML = '<div class="text-danger">Не удалось загрузить KPI.</div>';
+    return JSON.parse(localStorage.getItem('user') || '{}');
+  } catch {
+    return {};
   }
 }
