@@ -75,7 +75,7 @@ export async function recordKPI(userID, kpiId, score, date) {
   if (!actorEmail) {
     try {
       const u = JSON.parse(localStorage.getItem('user')) || {};
-      actorEmail = u?.email || u?.Email || '';
+      actorEmail = u.email || u.Email || '';
     } catch { actorEmail = ''; }
   }
 
