@@ -88,68 +88,53 @@ function createCharacterImage(percent) {
 
 // Таблица сотрудников
 export function createUsersTable(users) {
-  if (!Array.isArray(users) || users.length === 0) {
+  const arr = Array.isArray(users) ? users.slice() : [];
+  if (arr.length === 0) {
     const info = document.createElement('div');
     info.className = 'text-secondary my-2';
     info.textContent = 'Нет сотрудников с ролью employee или нет данных.';
     return info;
   }
 
+  // сортируем по месяцу (desc)
+  arr.sort((a, b) => (b.month ?? 0) - (a.month ?? 0));
+
   const table = document.createElement('table');
-  table.classList.add('table', 'table-striped');
+  table.classList.add('table', 'table-striped', 'align-middle');
 
   const thead = document.createElement('thead');
   thead.innerHTML = `
     <tr>
-      <th>Имя</th>
-      <th>Баллы (неделя)</th>
-      <th>Баллы (месяц)</th>
+      <th style="width:40%">Имя</th>
+      <th style="width:20%">Баллы (неделя)</th>
+      <th style="width:20%">Баллы (месяц)</th>
+      <th style="width:20%">Роль</th>
     </tr>
   `;
   table.appendChild(thead);
 
+  const fmt = (v) => {
+    const n = Number(v || 0);
+    if (!n) return '—';
+    const s = n.toFixed(2);
+    return s.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  };
+
   const tbody = document.createElement('tbody');
-  users.forEach(u => {
+  arr.forEach((u, idx) => {
     const tr = document.createElement('tr');
+    if (idx < 3) tr.classList.add('table-top'); // подчёркиваем ТОП-3
     tr.innerHTML = `
       <td>${u.name ?? '-'}</td>
-      <td>${(u.week ?? 0)}</td>
-      <td>${(u.month ?? 0)}</td>
+      <td>${fmt(u.week)}</td>
+      <td>${fmt(u.month)}</td>
+      <td class="text-tertiary">${u.role ?? '-'}</td>
     `;
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
 
   return table;
-}
-
-// ТОП-3
-export function createLeaderboard(users, period = 'week') {
-  const safe = Array.isArray(users) ? users : [];
-  const sorted = safe
-    .slice()
-    .sort((a, b) => (b[period] ?? 0) - (a[period] ?? 0))
-    .filter(u => (u[period] ?? 0) > 0)
-    .slice(0, 3);
-
-  const container = document.createElement('div');
-  container.classList.add('leaderboard', 'mb-4');
-
-  if (sorted.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'text-secondary';
-    empty.textContent = 'Нет данных за период.';
-    container.appendChild(empty);
-    return container;
-  }
-
-  sorted.forEach(u => {
-    const item = document.createElement('div');
-    item.textContent = `${u.name ?? '-'}: ${u[period] ?? 0}`;
-    container.appendChild(item);
-  });
-
-  return container;
 }
 
 // Рендер списка KPI с бейджами (сортировка по weight уже делает сервер)
