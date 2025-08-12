@@ -1,4 +1,8 @@
-// Простая крутилка
+// js/ui-components.js
+
+/**
+ * Лоадер
+ */
 export function createLoader(text = 'Загружаем данные…') {
   const box = document.createElement('div');
   box.className = 'd-flex align-items-center gap-2 my-3';
@@ -9,7 +13,11 @@ export function createLoader(text = 'Загружаем данные…') {
   return box;
 }
 
-// Прогресс-бар + персонаж
+/**
+ * Прогресс-бар с иконкой-персонажем
+ * @param {number} percent 0–100
+ * @param {'department'|'user'} size
+ */
 export function createProgressBar(percent, size = 'department') {
   const p = Math.max(0, Math.min(100, Number(percent) || 0));
 
@@ -45,10 +53,10 @@ export function createProgressBar(percent, size = 'department') {
 }
 
 function barClassByPercent(p) {
-  if (p < 30) return 'bar-critical';
-  if (p < 50) return 'bar-30';
-  if (p < 70) return 'bar-50';
-  return 'bar-70';
+  if (p < 30) return 'bar-critical'; // красный
+  if (p < 50) return 'bar-30';       // 30–49 (осветлённый)
+  if (p < 70) return 'bar-50';       // 50–69 (success)
+  return 'bar-70';                   // ≥70 (primary)
 }
 
 function createCharacterImage(percent) {
@@ -86,49 +94,38 @@ function createCharacterImage(percent) {
   return img;
 }
 
-// Таблица сотрудников
+/**
+ * Таблица сотрудников
+ */
 export function createUsersTable(users) {
-  const arr = Array.isArray(users) ? users.slice() : [];
-  if (arr.length === 0) {
+  const safe = Array.isArray(users) ? users : [];
+  if (safe.length === 0) {
     const info = document.createElement('div');
     info.className = 'text-secondary my-2';
     info.textContent = 'Нет сотрудников с ролью employee или нет данных.';
     return info;
   }
 
-  // сортируем по месяцу (desc)
-  arr.sort((a, b) => (b.month ?? 0) - (a.month ?? 0));
-
   const table = document.createElement('table');
-  table.classList.add('table', 'table-striped', 'align-middle');
+  table.classList.add('table', 'table-striped');
 
   const thead = document.createElement('thead');
   thead.innerHTML = `
     <tr>
-      <th style="width:40%">Имя</th>
-      <th style="width:20%">Баллы (неделя)</th>
-      <th style="width:20%">Баллы (месяц)</th>
-      <th style="width:20%">Роль</th>
+      <th>Имя</th>
+      <th>Баллы (неделя)</th>
+      <th>Баллы (месяц)</th>
     </tr>
   `;
   table.appendChild(thead);
 
-  const fmt = (v) => {
-    const n = Number(v || 0);
-    if (!n) return '—';
-    const s = n.toFixed(2);
-    return s.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
-  };
-
   const tbody = document.createElement('tbody');
-  arr.forEach((u, idx) => {
+  safe.forEach(u => {
     const tr = document.createElement('tr');
-    if (idx < 3) tr.classList.add('table-top'); // подчёркиваем ТОП-3
     tr.innerHTML = `
       <td>${u.name ?? '-'}</td>
-      <td>${fmt(u.week)}</td>
-      <td>${fmt(u.month)}</td>
-      <td class="text-tertiary">${u.role ?? '-'}</td>
+      <td>${u.week ?? 0}</td>
+      <td>${u.month ?? 0}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -137,36 +134,35 @@ export function createUsersTable(users) {
   return table;
 }
 
-// Рендер списка KPI с бейджами (сортировка по weight уже делает сервер)
-export function createKPIList(kpis = []) {
-  const wrap = document.createElement('div');
-  if (!Array.isArray(kpis) || kpis.length === 0) {
-    wrap.className = 'text-secondary';
-    wrap.textContent = 'Нет KPI для выбранного периода.';
-    return wrap;
+/**
+ * ТОП-3 лидеров
+ * @param {Array<{name:string, week?:number, month?:number}>} users
+ * @param {'week'|'month'} period
+ */
+export function createLeaderboard(users, period = 'week') {
+  const safe = Array.isArray(users) ? users : [];
+  const sorted = safe
+    .slice()
+    .sort((a, b) => (b?.[period] ?? 0) - (a?.[period] ?? 0))
+    .filter(u => (u?.[period] ?? 0) > 0)
+    .slice(0, 3);
+
+  const container = document.createElement('div');
+  container.classList.add('leaderboard', 'mb-4');
+
+  if (sorted.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'text-secondary';
+    empty.textContent = 'Нет данных за период.';
+    container.appendChild(empty);
+    return container;
   }
 
-  const list = document.createElement('div');
-  list.className = 'list-group';
-
-  kpis.forEach(k => {
+  sorted.forEach(u => {
     const item = document.createElement('div');
-    item.className = 'list-group-item d-flex justify-content-between align-items-start';
-
-    const left = document.createElement('div');
-    left.innerHTML = `
-      <div class="fw-medium">${k.name}</div>
-      <div class="text-tertiary small">Вес: ${k.weight}</div>
-    `;
-
-    const badge = document.createElement('span');
-    badge.className = `badge ${k.done ? 'bg-success' : 'bg-secondary'} rounded-pill`;
-    badge.textContent = k.done ? 'Выполнено' : 'Не выполнено';
-
-    item.append(left, badge);
-    list.append(item);
+    item.textContent = `${u.name ?? '-'}: ${u?.[period] ?? 0}`;
+    container.appendChild(item);
   });
 
-  wrap.append(list);
-  return wrap;
+  return container;
 }
