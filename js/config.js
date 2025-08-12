@@ -1,5 +1,5 @@
 // Базовый URL вашего Apps Script веб-приложения
-export const API_BASE = 'https://script.google.com/macros/s/AKfycbwo-kmDxSXNlbiiNo-RI70gUfHTC3Yn7dVRnpOxAHTIG_3zshq5rHGQP_Fdj2R2lkU/exec';
+export const API_BASE = 'http://127.0.0.1:8787/';
 
 // Эндпоинты для разных действий
 export const ENDPOINTS = {

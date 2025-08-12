@@ -1,0 +1,8 @@
+name = "kpi-backend"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kpi-d1"
+database_id = "<c7d93b3a-7494-45a0-8504-120e0fbc4786>"
