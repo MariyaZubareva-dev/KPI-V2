@@ -1,54 +1,62 @@
+/// <reference types="@cloudflare/workers-types" />
+
 // src/worker.ts
-// Cloudflare Worker + D1. Поддерживает маршруты:
-// /ping, /login, /getProgress, /recordKPI, /log
-// и обратную совместимость с GAS: ?action=...
+// Cloudflare Worker + D1. Роуты: /getProgress, /login, /recordKPI, /log, /ping
 
 export interface Env {
   DB: D1Database;
   COMMON_PASSWORD: string;
-  CORS_ORIGIN?: string;
+  CORS_ORIGIN?: string; // напр. https://mariyazubareva-dev.github.io
 }
 
-/* ===================== utils ===================== */
+/* ================== утилиты ================== */
 
-const jsonResp = (obj: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(obj), {
-    headers: { "content-type": "application/json; charset=utf-8", ...init.headers },
+function mergeHeaders(base: HeadersInit, extra?: HeadersInit): Headers {
+  const h = new Headers(base);
+  if (extra) {
+    const e = new Headers(extra);
+    e.forEach((v, k) => h.set(k, v));
+  }
+  return h;
+}
+
+function jsonResp(obj: unknown, init: ResponseInit = {}): Response {
+  const headers = mergeHeaders({ "content-type": "application/json; charset=utf-8" }, init.headers);
+  return new Response(JSON.stringify(obj), {
     status: init.status ?? 200,
+    headers,
   });
+}
 
-const ok  = (data: unknown)               => jsonResp({ success: true, data });
-const err = (message: string, status=400) => jsonResp({ success: false, message }, { status });
+// ← ключевая правка: обычные функции вместо стрелок/дженериков
+function ok(data: unknown): Response {
+  return jsonResp({ success: true, data });
+}
+function err(message: string, status = 400): Response {
+  return jsonResp({ success: false, message }, { status });
+}
 
 function allowOrigin(env: Env): string {
   return env.CORS_ORIGIN && env.CORS_ORIGIN.trim() !== "" ? env.CORS_ORIGIN : "*";
 }
-
-function withCORS(env: Env, res: Response) {
+function addSecurityHeaders(h: Headers) {
+  h.set("X-Content-Type-Options", "nosniff");
+  h.set("Referrer-Policy", "no-referrer-when-downgrade");
+  h.set("X-Frame-Options", "DENY");
+}
+function withCORS(env: Env, res: Response): Response {
   const headers = new Headers(res.headers);
   headers.set("Access-Control-Allow-Origin", allowOrigin(env));
   headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  // важное: разрешаем If-None-Match для conditional requests
-  headers.set("Access-Control-Allow-Headers", "Content-Type,Authorization,If-None-Match");
+  headers.set("Access-Control-Allow-Headers", "Content-Type,Authorization");
   headers.set("Access-Control-Allow-Credentials", "false");
+  headers.set("Vary", "Origin");
+  addSecurityHeaders(headers);
   return new Response(res.body, { status: res.status, headers });
 }
+function isPreflight(req: Request) { return req.method === "OPTIONS"; }
 
-function isPreflight(req: Request) {
-  return req.method === "OPTIONS";
-}
-
-function parseBool(v: any): boolean {
-  if (typeof v === "boolean") return v;
-  if (typeof v === "number") return v !== 0;
-  if (typeof v === "string") {
-    const s = v.trim().toLowerCase();
-    return s === "1" || s === "true" || s === "yes";
-  }
-  return false;
-}
-
-/* ===================== dates ===================== */
+/* ================ даты/периоды ================= */
 
 function startOfDay(d: Date) { const nd = new Date(d); nd.setHours(0,0,0,0); return nd; }
 function endOfDay(d: Date)   { const nd = new Date(d); nd.setHours(23,59,59,999); return nd; }
@@ -83,103 +91,47 @@ function fmtYYYYMMDD(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-/* ===================== SQL helpers ===================== */
+/* ================ SQL helpers ================= */
 
 async function one<T = any>(db: D1Database, sql: string, bind: any[] = []): Promise<T | null> {
   const r = await db.prepare(sql).bind(...bind).first<T>();
   return (r ?? null) as T | null;
 }
-
 async function all<T = any>(db: D1Database, sql: string, bind: any[] = []): Promise<T[]> {
   const r = await db.prepare(sql).bind(...bind).all<T>();
   return (r.results ?? []) as T[];
 }
 
-/* ===================== ETag + memory cache ===================== */
+/* =============== Cache helpers ================= */
 
-// простенький FNV-1a для ETag (стронг/вик не важен; делаем стронг)
-function fnv1a(str: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+const DEFAULT_TTL = 60; // секунд
+
+async function cacheGet(env: Env, req: Request, compute: () => Promise<Response>, ttl = DEFAULT_TTL): Promise<Response> {
+  // Кэшируем только GET
+  if (req.method !== "GET") return withCORS(env, await compute());
+
+  // ← ключевая правка: берём кэш безопасно, через globalThis, с фоллбеком
+  const cfCache = (globalThis as any)?.caches?.default as Cache | undefined;
+  const key = new Request(req.url, { method: "GET" });
+
+  if (cfCache) {
+    const cached = await cfCache.match(key);
+    if (cached) return withCORS(env, cached);
   }
-  // uint32 to hex
-  return (h >>> 0).toString(16);
+
+  const fresh = await compute();
+  const headers = new Headers(fresh.headers);
+  headers.set("Cache-Control", `public, max-age=${ttl}`);
+  headers.set("Vary", "Origin");
+  addSecurityHeaders(headers);
+
+  const cacheable = new Response(fresh.body, { status: fresh.status, headers });
+  if (cfCache) await cfCache.put(key, cacheable.clone());
+
+  return withCORS(env, cacheable);
 }
 
-type CacheEntry = { expires: number; etag: string; body: string };
-const memCache = new Map<string, CacheEntry>();
-const DEFAULT_TTL_MS = 30_000;
-
-// key нормализуем
-function cacheKey(route: string, params: Record<string, string | number | undefined>) {
-  const items = Object.entries(params)
-    .filter(([, v]) => v !== undefined)
-    .map(([k, v]) => `${k}=${String(v)}`)
-    .sort();
-  return `${route}?${items.join("&")}`;
-}
-
-function cacheGet(req: Request, key: string): Response | null {
-  const hit = memCache.get(key);
-  if (!hit) return null;
-  const now = Date.now();
-  if (hit.expires < now) {
-    memCache.delete(key);
-    return null;
-  }
-  // условная проверка
-  const inm = req.headers.get("If-None-Match");
-  if (inm && inm === hit.etag) {
-    return new Response(null, {
-      status: 304,
-      headers: {
-        "ETag": hit.etag,
-        "Cache-Control": "public, max-age=30",
-        "Content-Type": "application/json; charset=utf-8",
-      },
-    });
-  }
-  return new Response(hit.body, {
-    status: 200,
-    headers: {
-      "ETag": hit.etag,
-      "Cache-Control": "public, max-age=30",
-      "Content-Type": "application/json; charset=utf-8",
-    },
-  });
-}
-
-function cachePut(key: string, obj: unknown) {
-  const body = JSON.stringify({ success: true, data: obj });
-  const etag = fnv1a(body);
-  memCache.set(key, { expires: Date.now() + DEFAULT_TTL_MS, etag, body });
-  return new Response(body, {
-    status: 200,
-    headers: {
-      "ETag": etag,
-      "Cache-Control": "public, max-age=30",
-      "Content-Type": "application/json; charset=utf-8",
-    },
-  });
-}
-
-// удобная обёртка для кэшируемых JSON-ответов
-async function cacheJson(
-  req: Request,
-  routeKey: string,
-  paramsKey: Record<string, string | number | undefined>,
-  producer: () => Promise<unknown>
-) {
-  const key = cacheKey(routeKey, paramsKey);
-  const cached = cacheGet(req, key);
-  if (cached) return cached;
-  const data = await producer();
-  return cachePut(key, data);
-}
-
-/* ===================== handlers ===================== */
+/* ================ handlers ================= */
 
 async function handlePing() { return ok({ ok: true, pong: true }); }
 
@@ -196,60 +148,27 @@ async function handleLogin(env: Env, url: URL) {
     `SELECT id, name, email, role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`,
     [email]
   );
-
   if (!u) return jsonResp({ success: false });
 
-  return jsonResp({
-    success: true,
-    email: u.email,
-    role: u.role,
-    name: u.name,
-  });
+  return jsonResp({ success: true, email: u.email, role: u.role, name: u.name });
 }
 
 // GET /getProgress?scope=...
-async function handleGetProgress(env: Env, req: Request, url: URL) {
+async function handleGetProgress(env: Env, url: URL) {
   const scope = (url.searchParams.get("scope") || "department").toLowerCase();
-
-  if (scope === "department") {
-    // кэшируется 30с
-    return cacheJson(req, "/getprogress", { scope }, async () => {
-      return await computeDeptProgress(env);
-    });
-  }
-
-  if (scope === "users") {
-    const period = (url.searchParams.get("period") || "this_week").toLowerCase();
-    return cacheJson(req, "/getprogress", { scope, period }, async () => {
-      return await computeUsersProgress(env, period);
-    });
-  }
-
-  if (scope === "users_lastweek") {
-    return cacheJson(req, "/getprogress", { scope: "users_lastweek" }, async () => {
-      return await computeUsersLastWeek(env);
-    });
-  }
-
-  if (scope === "user") {
-    const userID = url.searchParams.get("userID") || "";
-    const period = (url.searchParams.get("period") || "this_week").toLowerCase();
-    if (!userID) return err("userID required");
-    // кэш по userID + текущей неделе
-    return cacheJson(req, "/getprogress", { scope: "user", userID, period }, async () => {
-      return await computeUserKPIs(env, userID);
-    });
-  }
-
+  if (scope === "department")     return handleGetDeptProgress(env);
+  if (scope === "users")          return handleGetUsersProgress(env, url);
+  if (scope === "users_lastweek") return handleGetUsersProgressLastWeek(env);
+  if (scope === "user")           return handleGetUserKPIs(env, url);
   return err("Unknown scope");
 }
 
-/* === department compute === */
-async function computeDeptProgress(env: Env) {
+// === department
+async function handleGetDeptProgress(env: Env) {
   const now = new Date();
   const { start, end } = getWeekBounds(now);
   const month = now.getMonth();
-  const year = now.getFullYear();
+  const year  = now.getFullYear();
 
   const weekSumRow = await one<{ sum: number }>(
     env.DB,
@@ -281,7 +200,7 @@ async function computeDeptProgress(env: Env) {
 
   const maxWeek = weightsSum * employeesCount;
 
-  // weeks in month (ISO)
+  // Число уникальных недель в текущем месяце
   const first = new Date(year, month, 1);
   const last  = new Date(year, month + 1, 0);
   const weekKeys = new Set<string>();
@@ -296,14 +215,10 @@ async function computeDeptProgress(env: Env) {
   const weekPercent  = Math.min(100, Math.round((weekSum  / (maxWeek  || 1)) * 100));
   const monthPercent = Math.min(100, Math.round((monthSum / (maxMonth || 1)) * 100));
 
-  return {
-    weekSum, monthSum,
-    maxWeek, maxMonth,
-    weeksInMonth, employeesCount,
-    weekPercent, monthPercent
-  };
+  return ok({ weekSum, monthSum, maxWeek, maxMonth, weeksInMonth, employeesCount, weekPercent, monthPercent });
 }
 
+// helper: ISO week number
 function getWeekNumberISO(dIn: Date) {
   const d = new Date(Date.UTC(dIn.getFullYear(), dIn.getMonth(), dIn.getDate()));
   const dayNum = d.getUTCDay() || 7;
@@ -312,12 +227,14 @@ function getWeekNumberISO(dIn: Date) {
   return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
-/* === users compute === */
-async function computeUsersProgress(env: Env, period: "this_week" | "prev_week" | string) {
+// === users (текущая неделя + текущий месяц), поддерживает ?period=prev_week
+async function handleGetUsersProgress(env: Env, url: URL) {
+  const period = (url.searchParams.get("period") || "this_week").toLowerCase();
   const now = new Date();
   const bounds = period === "prev_week"
     ? getWeekBounds(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7))
     : getWeekBounds(now);
+
   const { start, end } = bounds;
   const year = String(now.getFullYear());
   const monthStr = `${now.getMonth() + 1}`.padStart(2, "0");
@@ -346,14 +263,16 @@ async function computeUsersProgress(env: Env, period: "this_week" | "prev_week" 
   );
   const monthMap = new Map<number, number>(monthRows.map(r => [r.user_id, Number(r.sum || 0)]));
 
-  return users.map(u => ({
+  const data = users.map(u => ({
     id: u.id, name: u.name, email: u.email, role: u.role,
-    week: weekMap.get(u.id) || 0,
-    month: monthMap.get(u.id) || 0
+    week: weekMap.get(u.id) || 0, month: monthMap.get(u.id) || 0
   }));
+
+  return ok(data);
 }
 
-async function computeUsersLastWeek(env: Env) {
+// === users_lastweek
+async function handleGetUsersProgressLastWeek(env: Env) {
   const { start, end } = getLastFullWeekBounds(new Date());
 
   const users = await all<{ id: number; name: string; email: string; role: string }>(
@@ -370,61 +289,60 @@ async function computeUsersLastWeek(env: Env) {
   );
   const weekMap = new Map<number, number>(weekRows.map(r => [r.user_id, Number(r.sum || 0)]));
 
-  return users.map(u => ({
+  const data = users.map(u => ({
     id: u.id, name: u.name, email: u.email, role: u.role,
-    week: weekMap.get(u.id) || 0,
-    month: 0
+    week: weekMap.get(u.id) || 0, month: 0
   }));
+
+  return ok(data);
 }
 
-/* === user KPIs (текущая неделя) === */
-async function computeUserKPIs(env: Env, userID: string) {
+// === user KPIs за текущую неделю
+async function handleGetUserKPIs(env: Env, url: URL) {
+  const userID = url.searchParams.get("userID");
+  if (!userID) return err("userID required");
+
   const { start, end } = getWeekBounds(new Date());
 
   const kpis = await all<{ id: number; name: string; weight: number; category: string }>(
-    env.DB, `SELECT id, name, weight, category FROM kpis WHERE active=1 ORDER BY weight DESC, id ASC`
+    env.DB,
+    `SELECT id, name, weight, category FROM kpis WHERE active=1 ORDER BY weight DESC, id ASC`
   );
 
   const doneRows = await all<{ kpi_id: number }>(
     env.DB,
-    `SELECT DISTINCT kpi_id
-     FROM progress
-     WHERE user_id = ? AND date BETWEEN ? AND ?`,
+    `SELECT DISTINCT kpi_id FROM progress WHERE user_id = ? AND date BETWEEN ? AND ?`,
     [userID, fmtYYYYMMDD(start), fmtYYYYMMDD(end)]
   );
   const doneSet = new Set<number>(doneRows.map(r => r.kpi_id));
 
-  return kpis.map(k => ({
-    KPI_ID: String(k.id),
-    name: k.name,
-    weight: Number(k.weight || 0),
-    done: doneSet.has(k.id)
+  const data = kpis.map(k => ({
+    KPI_ID: String(k.id), name: k.name, weight: Number(k.weight || 0), done: doneSet.has(k.id)
   }));
+
+  return ok(data);
 }
 
-/* === recordKPI === */
 // GET /recordKPI?userID=&kpiId=&actorEmail[&date=YYYY-MM-DD]
 async function handleRecordKPI(env: Env, url: URL) {
-  const userID = url.searchParams.get("userID");
-  const kpiId = url.searchParams.get("kpiId");
+  const userID     = url.searchParams.get("userID");
+  const kpiId      = url.searchParams.get("kpiId");
   const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
-  const dateStr = url.searchParams.get("date") || fmtYYYYMMDD(new Date());
+  const dateStr    = url.searchParams.get("date") || fmtYYYYMMDD(new Date());
 
-  if (!userID || !kpiId) return err("userID and kpiId required");
-  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+  if (!userID || !kpiId)   return err("userID and kpiId required");
+  if (!actorEmail)         return err("forbidden: actorEmail required", 403);
 
-  const admin = await one<{ id: number; role: string }>(
-    env.DB,
-    `SELECT id, role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`,
-    [actorEmail]
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
   );
   if (!admin || (admin.role || "").toLowerCase() !== "admin") {
     await logEvent(env, "kpi_record_forbidden", actorEmail, Number(userID), Number(kpiId), null, { reason: "not_admin" });
     return err("forbidden: only admin can record KPI", 403);
   }
 
-  const kpi = await one<{ id: number; weight: number }>(
-    env.DB, `SELECT id, weight FROM kpis WHERE id=? AND active=1`, [kpiId]
+  const kpi = await one<{ weight: number }>(
+    env.DB, `SELECT weight FROM kpis WHERE id=? AND active=1`, [kpiId]
   );
   if (!kpi) return err("invalid kpiId");
 
@@ -435,13 +353,9 @@ async function handleRecordKPI(env: Env, url: URL) {
 
   await logEvent(env, "kpi_recorded_backend", actorEmail, Number(userID), Number(kpiId), Number(kpi.weight || 0), { date: dateStr });
 
-  // Сбросим кэш: новые баллы должны сразу попадать в ответы
-  memCache.clear();
-
   return ok({ userID, kpiId, score: kpi.weight || 0, date: dateStr });
 }
 
-/* === логирование произвольных событий === */
 // GET /log?event=&email=&userID=&details=JSON
 async function handleLog(env: Env, url: URL) {
   const event   = url.searchParams.get("event") || "unknown";
@@ -482,24 +396,12 @@ async function logEvent(
     .run();
 }
 
-/* ===================== routing ===================== */
+/* =============== маршрутизация ================= */
 
 function pathRoute(url: URL): string {
   let p = url.pathname.toLowerCase();
   if (p.endsWith("/") && p !== "/") p = p.slice(0, -1);
   return p;
-}
-
-function actionRoute(url: URL): string | null {
-  const action = url.searchParams.get("action");
-  if (!action) return null;
-  const a = action.toLowerCase();
-  if (a === "login")       return "/login";
-  if (a === "getprogress") return "/getprogress";
-  if (a === "recordkpi")   return "/recordkpi";
-  if (a === "log" || a === "logevent") return "/log";
-  if (a === "ping")        return "/ping";
-  return null;
 }
 
 export default {
@@ -512,24 +414,35 @@ export default {
     }
 
     const url = new URL(req.url);
-    let route = pathRoute(url);
-    if (!["/ping", "/login", "/getprogress", "/recordkpi", "/log"].includes(route)) {
-      const byAction = actionRoute(url);
-      if (byAction) route = byAction;
-    }
+    const route = pathRoute(url);
 
     try {
+      // Кэширующие маршруты (GET агрегаты)
+      if (req.method === "GET" && route === "/getprogress") {
+        const scope = (url.searchParams.get("scope") || "department").toLowerCase();
+        const cacheable = scope === "department" || scope === "users" || scope === "users_lastweek";
+        if (cacheable) {
+          return cacheGet(env, req, () => handleGetProgress(env, url), DEFAULT_TTL);
+        }
+        return withCORS(env, await handleGetProgress(env, url));
+      }
+
       let res: Response;
-      if (route === "/ping")            res = await handlePing();
-      else if (route === "/login")      res = await handleLogin(env, url);
-      else if (route === "/getprogress")res = await handleGetProgress(env, req, url);
-      else if (route === "/recordkpi")  res = await handleRecordKPI(env, url);
-      else if (route === "/log")        res = await handleLog(env, url);
-      else                              res = err("Invalid action", 400);
+      if (route === "/ping") {
+        res = await handlePing();
+      } else if (route === "/login") {
+        res = await handleLogin(env, url);
+      } else if (route === "/recordkpi") {
+        res = await handleRecordKPI(env, url);
+      } else if (route === "/log") {
+        res = await handleLog(env, url);
+      } else {
+        res = err("Invalid action", 400);
+      }
 
       return withCORS(env, res);
     } catch (e: any) {
-      const msg = e?.message ? String(e.message) : "Internal error";
+      const msg = (e && e.message) ? String(e.message) : "Internal error";
       return withCORS(env, jsonResp({ success: false, message: msg }, { status: 500 }));
     }
   },

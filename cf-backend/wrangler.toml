@@ -12,4 +12,5 @@ database_id = "c7d93b3a-7494-45a0-8504-120e0fbc4786"
 preview_database_id = "b31e573b-c4fe-4f9c-81b5-83d4ddc9a6f3"
 
 [vars]
+COMMON_PASSWORD=kpi2025
 CORS_ORIGIN = "https://mariyazubareva-dev.github.io"
