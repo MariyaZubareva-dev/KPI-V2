@@ -1,44 +1,25 @@
 // js/api.js
-import { API_BASE, API_BASE_FALLBACK, USE_FALLBACK } from './config.js';
+import { API_BASE } from './config.js';
 
 // ---------- helpers ----------
-async function parseResponse(res) {
-  const raw = await res.text();
-  const clean = raw.trim().replace(/^<pre[^>]*>/i, '').replace(/<\/pre>$/i, '');
-  try { return JSON.parse(clean); } catch { return clean; }
+function qs(obj = {}) {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null || v === '') continue;
+    sp.set(k, String(v));
+  }
+  // легкий no-cache
+  sp.set('_ts', Date.now().toString());
+  return sp.toString();
 }
 
-async function request(action, { method = 'GET', params = {}, body = null } = {}) {
-  async function run(base) {
-    const url = new URL(base);
-    url.searchParams.set('action', action);
-    Object.entries(params || {}).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
-    });
-    url.searchParams.set('_ts', Date.now().toString());
-    const init = { method, mode: 'cors', credentials: 'omit' };
-    if (method === 'POST') {
-      init.headers = { 'Content-Type': 'text/plain;charset=UTF-8' };
-      if (body) init.body = typeof body === 'string' ? body : JSON.stringify(body);
-    }
-    const res = await fetch(url.toString(), init);
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      throw new Error(`${action} failed: ${res.status} ${res.statusText} ${txt.slice(0, 200)}`);
-    }
-    return parseResponse(res);
-  }
-
-  try {
-    return await run(API_BASE);
-  } catch (e) {
-    // опциональный fallback на GAS
-    if (USE_FALLBACK) {
-      console.warn('[API] primary failed, fallback to GAS:', e?.message || e);
-      return await run(API_BASE_FALLBACK);
-    }
-    throw e;
-  }
+async function getJSON(url) {
+  const res = await fetch(url, { method: 'GET', mode: 'cors', credentials: 'omit' });
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error(`Bad JSON: ${text.slice(0,200)}`); }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} ${text.slice(0,200)}`);
+  return data;
 }
 
 // ---------- API ----------
@@ -47,88 +28,88 @@ async function request(action, { method = 'GET', params = {}, body = null } = {}
  * Прогресс
  * @param {'department'|'users'|'users_lastweek'|'user'} scope
  * @param {string=} userID
+ * @param {'this_week'|'prev_week'=} period  // используется для scope=users
  */
-export async function getProgress(scope, userID) {
-  const params = { scope };
-  if (userID) params.userID = userID;
+export async function getProgress(scope, userID, period) {
+  const params = { scope, userID, period };
+  const url = `${API_BASE}/getProgress?${qs(params)}`;
+  const raw = await getJSON(url);
 
-  const raw = await request('getProgress', { method: 'GET', params });
-  if (raw?.ok === false || raw?.success === false) {
-    throw new Error(raw?.error || raw?.message || 'getProgress returned error');
-  }
+  if (raw?.success === false) throw new Error(raw?.message || 'getProgress returned error');
+
+  // department -> объект; users/user -> массив
   if (scope === 'department') return raw?.data ?? raw;
-  return Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
+  const data = raw?.data ?? raw;
+  return Array.isArray(data) ? data : [];
 }
 
 /**
  * Запись KPI события
- * Может принимать объект: { userID, kpiId, score, date?, actorEmail? }
- * или аргументы по отдельности.
+ * @param {object|string|number} input  { userID, kpiId, date?, actorEmail? } | userID
+ * date: YYYY-MM-DD (опционально). score игнорируется на бэке — вес берётся из таблицы KPI.
  */
-export async function recordKPI(arg1, kpiId, score, date) {
-  let userID; let actorEmail;
-
-  if (typeof arg1 === 'object' && arg1 !== null) {
-    ({ userID, kpiId, score, date, actorEmail } = arg1);
+export async function recordKPI(input, kpiId, _score, date) {
+  /** нормализуем вход */
+  let userID, actorEmail, kpi;
+  if (typeof input === 'object' && input !== null) {
+    userID     = input.userID;
+    kpi        = input.kpiId;
+    date       = input.date;
+    actorEmail = input.actorEmail;
   } else {
-    userID = arg1;
+    userID = input;
+    kpi    = kpiId;
   }
 
-  // actorEmail: пробуем взять из localStorage, если не передали
   if (!actorEmail) {
     try {
       const u = JSON.parse(localStorage.getItem('user') || '{}');
       actorEmail = u?.email || u?.Email || '';
-    } catch {
-      actorEmail = '';
-    }
+    } catch { actorEmail = ''; }
   }
 
-  const params = { userID, kpiId, score, date, actorEmail };
-  const raw = await request('recordKPI', { method: 'GET', params });
-  if (raw?.ok === false || raw?.success === false) {
-    throw new Error(raw?.error || raw?.message || 'recordKPI returned error');
-  }
+  const params = { userID, kpiId: kpi, date, actorEmail };
+  const url = `${API_BASE}/recordKPI?${qs(params)}`;
+  const raw = await getJSON(url);
+
+  if (raw?.success === false) throw new Error(raw?.message || 'recordKPI returned error');
   return raw?.data ?? raw;
 }
 
 /**
  * Логирование событий
+ * @param {string} event
+ * @param {object} extra  { userID?, email?, user? , ... } — остальные поля уйдут в details как JSON
  */
 export async function logEvent(event, extra = {}) {
-  const params = {
-    event,
-    userID: extra?.userID || extra?.user?.id || '',
-    email:  extra?.email  || extra?.user?.email || ''
-  };
-  if (extra && Object.keys(extra).length) params.details = JSON.stringify(extra);
+  const email  = extra?.email || extra?.user?.email || '';
+  const userID = extra?.userID || extra?.user?.id || '';
+  const details = Object.keys(extra).length ? JSON.stringify(extra) : undefined;
 
-  const raw = await request('log', { method: 'GET', params });
-  if (raw?.ok === false || raw?.success === false) {
-    throw new Error(raw?.error || raw?.message || 'logEvent returned error');
-  }
+  const params = { event, email, userID, details };
+  const url = `${API_BASE}/log?${qs(params)}`;
+  const raw = await getJSON(url);
+
+  if (raw?.success === false) throw new Error(raw?.message || 'logEvent returned error');
   return raw?.data ?? raw;
 }
 
-// Удобные обёртки (если где-то используешь напрямую)
+/** Доп. обёртки — для удобства выборок */
 export async function getUserKPIs(userID, period = 'this_week') {
-  const params = { scope: 'user', userID, period };
-  const raw = await request('getProgress', { method: 'GET', params });
-  if (raw?.ok === false || raw?.success === false) {
-    throw new Error(raw?.error || raw?.message || 'getUserKPIs returned error');
-  }
+  const url = `${API_BASE}/getProgress?${qs({ scope: 'user', userID, period })}`;
+  const raw = await getJSON(url);
+  if (raw?.success === false) throw new Error(raw?.message || 'getUserKPIs returned error');
   return raw?.data ?? raw;
 }
 
 export async function getUsersAggregate(period = 'this_week') {
-  const params = (period === 'prev_week') ? { scope: 'users_lastweek' } : { scope: 'users' };
-  const raw = await request('getProgress', { method: 'GET', params });
-  if (raw?.ok === false || raw?.success === false) {
-    throw new Error(raw?.error || raw?.message || 'getUsersAggregate returned error');
-  }
+  const scope = period === 'prev_week' ? 'users_lastweek' : 'users';
+  const url = `${API_BASE}/getProgress?${qs({ scope })}`;
+  const raw = await getJSON(url);
+  if (raw?.success === false) throw new Error(raw?.message || 'getUsersAggregate returned error');
   const data = raw?.data ?? raw;
   return Array.isArray(data) ? data : [];
 }
 
-// алиасы для старых импортов
+// алиасы на случай старых импортов
 export { getProgress as apiGetProgress, recordKPI as apiRecordKPI, logEvent as apiLogEvent };
