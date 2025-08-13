@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginSection = document.getElementById('login-section');
   const stored = safeGetUser();
 
-  // если уже залогинен — показываем дашборд
   if (stored) {
     if (loginSection) loginSection.style.display = 'none';
     renderDashboard(stored).catch(err => {
@@ -16,7 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
-  // иначе — форма логина
   if (!loginSection) return;
 
   loginSection.style.display = 'block';
@@ -39,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const user = {
-        id:    resp.email,     // в проекте id=email — сохраняем совместимость
+        id:    resp.email,
         email: resp.email,
         role:  resp.role,
         name:  resp.name
