@@ -1,53 +1,59 @@
 // js/auth.js
-import { API_BASE } from './config.js';
+import { login } from './api.js';
 import { renderDashboard } from './dashboard.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginSection = document.getElementById('login-section');
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const stored = safeGetUser();
 
-  if (user) {
+  // если уже залогинен — показываем дашборд
+  if (stored) {
     if (loginSection) loginSection.style.display = 'none';
-    renderDashboard(user).catch(err => {
+    renderDashboard(stored).catch(err => {
       console.error('Ошибка при рендере дашборда:', err);
       alert('Не удалось загрузить дашборд. Проверьте консоль.');
     });
     return;
   }
 
-  if (loginSection) {
-    loginSection.style.display = 'block';
-    const btn = document.getElementById('login-button');
-    btn?.addEventListener('click', async () => {
-      const email = (document.getElementById('email')?.value || '').trim();
-      const password = (document.getElementById('password')?.value || '');
+  // иначе — форма логина
+  if (!loginSection) return;
 
-      try {
-        const url = new URL(API_BASE);
-        url.searchParams.set('action', 'login');
-        url.searchParams.set('email', email);
-        url.searchParams.set('password', password);
+  loginSection.style.display = 'block';
+  const btn = document.getElementById('login-button');
 
-        const res = await fetch(url.toString(), { credentials: 'omit' });
-        const data = await res.json();
+  btn?.addEventListener('click', async () => {
+    const email = (document.getElementById('email')?.value || '').trim();
+    const password = (document.getElementById('password')?.value || '');
 
-        if (!data.success) {
-          alert('Неверные email или пароль');
-          return;
-        }
+    if (!email || !password) {
+      alert('Введите email и пароль');
+      return;
+    }
 
-        const nextUser = {
-          id:    data.email,
-          email: data.email,
-          role:  data.role,
-          name:  data.name
-        };
-        localStorage.setItem('user', JSON.stringify(nextUser));
-        location.reload();
-      } catch (e) {
-        console.error('Ошибка авторизации:', e);
-        alert('Ошибка при входе');
+    try {
+      const resp = await login(email, password);
+      if (!resp?.success) {
+        alert('Неверные email или пароль');
+        return;
       }
-    });
-  }
+
+      const user = {
+        id:    resp.email,     // в проекте id=email — сохраняем совместимость
+        email: resp.email,
+        role:  resp.role,
+        name:  resp.name
+      };
+      localStorage.setItem('user', JSON.stringify(user));
+      location.reload();
+    } catch (e) {
+      console.error('Ошибка авторизации:', e);
+      alert('Ошибка при входе. Проверьте консоль.');
+    }
+  });
 });
+
+function safeGetUser() {
+  try { return JSON.parse(localStorage.getItem('user') || '{}') || null; }
+  catch { return null; }
+}
