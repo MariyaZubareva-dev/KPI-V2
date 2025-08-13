@@ -1,5 +1,5 @@
 // js/api.js
-import { API_BASE } from './config.js';
+import { API_BASE, API_BASE_FALLBACK, USE_FALLBACK } from './config.js';
 
 // ---------- helpers ----------
 async function parseResponse(res) {
@@ -9,31 +9,36 @@ async function parseResponse(res) {
 }
 
 async function request(action, { method = 'GET', params = {}, body = null } = {}) {
-  const url = new URL(API_BASE);
-  url.searchParams.set('action', action);
-
-  Object.entries(params || {}).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== '') {
-      url.searchParams.set(k, String(v));
+  async function run(base) {
+    const url = new URL(base);
+    url.searchParams.set('action', action);
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
+    });
+    url.searchParams.set('_ts', Date.now().toString());
+    const init = { method, mode: 'cors', credentials: 'omit' };
+    if (method === 'POST') {
+      init.headers = { 'Content-Type': 'text/plain;charset=UTF-8' };
+      if (body) init.body = typeof body === 'string' ? body : JSON.stringify(body);
     }
-  });
-
-  url.searchParams.set('_ts', Date.now().toString());
-  console.log('[API]', action, method, url.toString());
-
-  const init = { method, mode: 'cors', credentials: 'omit' };
-
-  if (method === 'POST') {
-    init.headers = { 'Content-Type': 'text/plain;charset=UTF-8' };
-    if (body) init.body = typeof body === 'string' ? body : JSON.stringify(body);
+    const res = await fetch(url.toString(), init);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`${action} failed: ${res.status} ${res.statusText} ${txt.slice(0, 200)}`);
+    }
+    return parseResponse(res);
   }
 
-  const res = await fetch(url.toString(), init);
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`${action} failed: ${res.status} ${res.statusText} ${txt.slice(0, 200)}`);
+  try {
+    return await run(API_BASE);
+  } catch (e) {
+    // опциональный fallback на GAS
+    if (USE_FALLBACK) {
+      console.warn('[API] primary failed, fallback to GAS:', e?.message || e);
+      return await run(API_BASE_FALLBACK);
+    }
+    throw e;
   }
-  return parseResponse(res);
 }
 
 // ---------- API ----------
@@ -57,35 +62,39 @@ export async function getProgress(scope, userID) {
 
 /**
  * Запись KPI события
- * @param {object|string|number} arg1 - либо объект, либо userID
- * Объект формата: { userID, kpiId, score?, date?, actorEmail? }
+ * Может принимать объект: { userID, kpiId, score, date?, actorEmail? }
+ * или аргументы по отдельности.
  */
-export async function recordKPI(arg1, kpiId, score, date, actorEmail) {
-  let payload;
+export async function recordKPI(arg1, kpiId, score, date) {
+  let userID; let actorEmail;
+
   if (typeof arg1 === 'object' && arg1 !== null) {
-    payload = { ...arg1 };
+    ({ userID, kpiId, score, date, actorEmail } = arg1);
   } else {
-    payload = { userID: String(arg1), kpiId, score, date, actorEmail };
+    userID = arg1;
   }
 
-  // если actorEmail не передали — берём из localStorage
-  if (!payload.actorEmail) {
+  // actorEmail: пробуем взять из localStorage, если не передали
+  if (!actorEmail) {
     try {
-      const u = JSON.parse(localStorage.getItem('user')) || {};
-      payload.actorEmail = u?.email || u?.Email || '';
+      const u = JSON.parse(localStorage.getItem('user') || '{}');
+      actorEmail = u?.email || u?.Email || '';
     } catch {
-      payload.actorEmail = '';
+      actorEmail = '';
     }
   }
 
-  const raw = await request('recordKPI', { method: 'GET', params: payload });
+  const params = { userID, kpiId, score, date, actorEmail };
+  const raw = await request('recordKPI', { method: 'GET', params });
   if (raw?.ok === false || raw?.success === false) {
     throw new Error(raw?.error || raw?.message || 'recordKPI returned error');
   }
   return raw?.data ?? raw;
 }
 
-/** Логирование событий в Sheets */
+/**
+ * Логирование событий
+ */
 export async function logEvent(event, extra = {}) {
   const params = {
     event,
@@ -101,7 +110,7 @@ export async function logEvent(event, extra = {}) {
   return raw?.data ?? raw;
 }
 
-// Удобные обёртки (если нужны в будущем)
+// Удобные обёртки (если где-то используешь напрямую)
 export async function getUserKPIs(userID, period = 'this_week') {
   const params = { scope: 'user', userID, period };
   const raw = await request('getProgress', { method: 'GET', params });
@@ -121,5 +130,5 @@ export async function getUsersAggregate(period = 'this_week') {
   return Array.isArray(data) ? data : [];
 }
 
-// алиасы на случай старых импортов
+// алиасы для старых импортов
 export { getProgress as apiGetProgress, recordKPI as apiRecordKPI, logEvent as apiLogEvent };

@@ -1,15 +1,11 @@
-// Базовый URL вашего Apps Script веб-приложения
-export const API_BASE = 'http://127.0.0.1:8787/';
+// js/config.js
 
-// Эндпоинты для разных действий
-export const ENDPOINTS = {
-  LOGIN:    `${API_BASE}?action=login`,
-  PROGRESS: `${API_BASE}?action=getProgress`,
-  RECORD:   `${API_BASE}?action=recordKPI`,
-};
+// Продовый воркер (Cloudflare Workers)
+export const PROD_WORKER = 'https://kpi-api.mariyazubareva-dev.workers.dev';
 
-// Общий пароль для всех пользователей
-export const COMMON_PASSWORD = 'kpi2025';
-
-// Максимальное число баллов в неделю (для расчёта процента департамента)
-export const MAX_WEEKLY_POINTS = 15.25 * 6; // 6 сотрудников
+// Базовый URL API: локально — dev-сервер wrangler (8787), иначе — продовый воркер
+export const API_BASE =
+  (typeof location !== 'undefined' &&
+   (location.hostname === '127.0.0.1' || location.hostname === 'localhost'))
+    ? 'http://127.0.0.1:8787'
+    : PROD_WORKER;

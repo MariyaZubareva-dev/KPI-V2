@@ -1,8 +1,15 @@
-name = "kpi-backend"
-main = "src/index.js"
+name = "kpi-api"
+main = "src/worker.ts"
 compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+account_id = "f1a7e75311741e2d15cfc9ce5dcf7ea3"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "kpi-d1"
-database_id = "<c7d93b3a-7494-45a0-8504-120e0fbc4786>"
+database_id = "c7d93b3a-7494-45a0-8504-120e0fbc4786"
+preview_database_id = "b31e573b-c4fe-4f9c-81b5-83d4ddc9a6f3"
+
+[vars]
+CORS_ORIGIN = "https://mariyazubareva-dev.github.io"
