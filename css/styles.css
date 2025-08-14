@@ -149,3 +149,11 @@ a:hover, .link:hover{ text-decoration: underline; }
 .kpi-char-track span {
   vertical-align: middle;
 }
+
+.kpi-char-caption {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.2;
+  color: #6b7280; /* спокойный серый */
+  font-weight: 500;
+}
