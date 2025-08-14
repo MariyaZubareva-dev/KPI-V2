@@ -11,7 +11,7 @@ export function createLoader(text = 'Загружаем данные…') {
   return box;
 }
 
-/** Прогресс-бар с иконкой-персонажем */
+/** Прогресс-бар с иконкой-персонажем (по % прогресса) */
 export function createProgressBar(percent, size = 'department') {
   const p = Math.max(0, Math.min(100, Number(percent) || 0));
 
@@ -48,9 +48,9 @@ export function createProgressBar(percent, size = 'department') {
 
 function barClassByPercent(p) {
   if (p < 30) return 'bar-critical'; // красный
-  if (p < 50) return 'bar-30';       // 30–49 (осветлённый)
-  if (p < 70) return 'bar-50';       // 50–69 (success)
-  return 'bar-70';                   // ≥70 (primary)
+  if (p < 50) return 'bar-30';       // 30–49
+  if (p < 70) return 'bar-50';       // 50–69
+  return 'bar-70';                   // ≥70
 }
 
 function createCharacterImage(percent) {
@@ -63,16 +63,16 @@ function createCharacterImage(percent) {
 
   if (percent < 30) {
     img.src = './images/krosh.png';
-    img.title = 'Старт (0–29)';
+    img.title = 'Старт (0–29%)';
   } else if (percent < 50) {
     img.src = './images/kopatych.png';
-    img.title = 'Зима впроголодь (≥30)';
+    img.title = '≥30% от цели';
   } else if (percent < 70) {
     img.src = './images/karkarych-sовunya.png';
-    img.title = 'Минимум, чтобы выжить (≥50)';
+    img.title = '≥50% от цели';
   } else {
     img.src = './images/nyusha.png';
-    img.title = 'Изобилие (≥70)';
+    img.title = '≥70% от цели';
   }
 
   img.onerror = () => {
@@ -88,7 +88,7 @@ function createCharacterImage(percent) {
   return img;
 }
 
-/** Таблица сотрудников */
+/** Таблица сотрудников (суммы) */
 export function createUsersTable(users) {
   const safe = Array.isArray(users) ? users : [];
   if (safe.length === 0) {
@@ -126,19 +126,47 @@ export function createUsersTable(users) {
   return table;
 }
 
-/** ТОП-3 лидеров */
-export function createLeaderboard(users, period = 'week') {
-  const safe = Array.isArray(users) ? users : [];
+/* ---------- BADGES: награды по % прогресса ---------- */
+
+export const BADGE_THRESHOLDS = [
+  { pct: 100, icon: '🏆', title: '100% цели' },
+  { pct: 75,  icon: '🥇', title: '75%+ цели' },
+  { pct: 50,  icon: '🥈', title: '50%+ цели' },
+  { pct: 25,  icon: '🥉', title: '25%+ цели' },
+];
+
+export function badgeForPercent(pct) {
+  for (const b of BADGE_THRESHOLDS) if (pct >= b.pct) return b;
+  return null;
+}
+
+export function renderBadge(pct) {
+  const b = badgeForPercent(pct);
+  if (!b) return null;
+  const span = document.createElement('span');
+  span.className = 'badge-icon';
+  span.textContent = b.icon;
+  span.title = b.title;
+  return span;
+}
+
+/** ТОП-3 лидеров с бейджами по % от персонального максимума */
+export function createLeaderboard(employees, mode = 'week', perUserMax = 1) {
+  const safe = Array.isArray(employees) ? employees : [];
   const sorted = safe
     .slice()
-    .sort((a, b) => (b?.[period] ?? 0) - (a?.[period] ?? 0))
-    .filter(u => (u?.[period] ?? 0) > 0)
+    .sort((a, b) => {
+      const av = mode === 'week' ? Number(a.week || 0) : Number(a.month || 0);
+      const bv = mode === 'week' ? Number(b.week || 0) : Number(b.month || 0);
+      return bv - av;
+    })
+    .filter(u => (mode === 'week' ? Number(u.week||0) : Number(u.month||0)) > 0)
     .slice(0, 3);
 
   const container = document.createElement('div');
   container.classList.add('leaderboard', 'mb-4');
 
-  if (sorted.length === 0) {
+  if (!sorted.length) {
     const empty = document.createElement('div');
     empty.className = 'text-secondary';
     empty.textContent = 'Нет данных за период.';
@@ -146,10 +174,26 @@ export function createLeaderboard(users, period = 'week') {
     return container;
   }
 
-  sorted.forEach(u => {
-    const item = document.createElement('div');
-    item.textContent = `${u.name ?? '-'}: ${u?.[period] ?? 0}`;
-    container.appendChild(item);
+  sorted.forEach((u, i) => {
+    const points = mode === 'week' ? Number(u.week || 0) : Number(u.month || 0);
+    const pct = perUserMax ? Math.round(points / perUserMax * 100) : 0;
+
+    const row = document.createElement('div');
+    row.className = 'd-flex align-items-center gap-2 my-1';
+
+    const name = document.createElement('div');
+    name.className = 'fw-bold';
+    name.textContent = `${i + 1}. ${u.name ?? '-'}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'text-secondary';
+    meta.textContent = `${points} • ${pct}%`;
+
+    const badge = renderBadge(pct);
+
+    row.append(name, meta);
+    if (badge) row.append(badge);
+    container.appendChild(row);
   });
 
   return container;

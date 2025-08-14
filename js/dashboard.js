@@ -1,12 +1,11 @@
 // js/dashboard.js
-import { logEvent, bootstrap as apiBootstrap } from './api.js';
+import { getProgress as apiGetProgress, logEvent, bootstrap as apiBootstrap } from './api.js';
 import {
   createProgressBar,
   createUsersTable,
   createLeaderboard,
   createLoader
 } from './ui-components.js';
-
 
 /**
  * Рендер дашборда
@@ -79,7 +78,7 @@ export async function renderDashboard(user) {
   function buildLeaderWeekHeader() {
     const wrap = document.createElement('div');
     const h4 = document.createElement('h4'); h4.textContent = 'ТОП-3 за неделю';
-    const sub = document.createElement('div'); sub.className = 'text-body-secondary small mt-1';
+    const sub = document.createElement('div'); sub.className = 'text-tertiary caption mt-1';
     const { start, end } = getLastFullWeekBounds();
     sub.textContent = `за прошлую неделю (Пн ${fmtDDMM(start)} — Вс ${fmtDDMM(end)})`;
     wrap.append(h4, sub);
@@ -144,7 +143,7 @@ export async function renderDashboard(user) {
   }
 
   async function refreshDashboardData() {
-    // ❗ Один вызов вместо трёх
+    // один батч-вызов
     const { dept, users, usersPrevWeek } = await apiBootstrap();
 
     const deptData  = dept || {};
@@ -160,6 +159,10 @@ export async function renderDashboard(user) {
       renderEmployeePanel({ deptData, usersArr });
     }
 
+    // Персональные максимумы для бейджей
+    const perUserMaxWeek  = ((Number(deptData?.maxWeek || 0) / Number(deptData?.employeesCount || 1)) || 1);
+    const perUserMaxMonth = perUserMaxWeek * Number(deptData?.weeksInMonth || 4) || 1;
+
     if (role !== 'employee') {
       deptSection.innerHTML = '';
       const deptTitle = document.createElement('h3');
@@ -168,12 +171,18 @@ export async function renderDashboard(user) {
     }
 
     leaderWeekSec.innerHTML = '';
-    leaderWeekSec.append(buildLeaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
+    leaderWeekSec.append(
+      buildLeaderWeekHeader(),
+      createLeaderboard(employeesPrevW, 'week', perUserMaxWeek)
+    );
 
     leaderMonthSec.innerHTML = '';
     const h4Month = document.createElement('h4');
     h4Month.textContent = 'ТОП-3 за месяц';
-    leaderMonthSec.append(h4Month, createLeaderboard(employees, 'month'));
+    leaderMonthSec.append(
+      h4Month,
+      createLeaderboard(employees, 'month', perUserMaxMonth)
+    );
 
     tableSection.innerHTML = '';
     const tableTitle = document.createElement('h4');
@@ -188,7 +197,7 @@ export async function renderDashboard(user) {
     try { loader.remove(); } catch {}
   }
 
-  // Слушаем событие из админ-панели
+  // После записи KPI из админки — обновляем
   document.addEventListener('kpi:recorded', async () => {
     await refreshDashboardData();
   });

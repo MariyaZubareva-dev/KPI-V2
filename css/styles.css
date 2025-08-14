@@ -119,3 +119,5 @@ a:hover, .link:hover{ text-decoration: underline; }
   color: var(--text-tertiary);
   margin: -4px 0 8px 0;
 }
+
+.badge-icon { margin-left: .4rem; font-size: 1.1rem; line-height: 1; }
