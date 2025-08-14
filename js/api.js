@@ -94,6 +94,13 @@ if (form) {
     }
   });
 }
+// Единый батч для начальной загрузки
+export async function bootstrap() {
+  const data = await httpGet('/bootstrap');
+  if (data?.success === false) throw new Error(data?.message || 'bootstrap returned error');
+  return data.data ?? data; // { dept, users, usersPrevWeek }
+}
+
 
 // Глобальный logout (если у тебя есть кнопка вне dashboard.js — привяжи здесь)
 const logoutBtn = $('#logout-btn');

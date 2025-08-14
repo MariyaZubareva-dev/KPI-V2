@@ -1,5 +1,5 @@
 // js/dashboard.js
-import { bootstrap, logEvent } from './api.js';
+import { getProgress as apiGetProgress, logEvent } from './api.js';
 import {
   createProgressBar,
   createUsersTable,
