@@ -106,9 +106,11 @@ export async function renderDashboard(user) {
       return;
     }
 
-    const personalWeekPoints  = Number(me.week || 0);
+    // Личные баллы
+    const personalWeekPoints  = Number(me.week  || 0);
     const personalMonthPoints = Number(me.month || 0);
 
+    // Нормируем проценты для личных баров (по рассчитанному максимуму на пользователя)
     const employeesCount  = Number(deptData?.employeesCount || 1);
     const maxWeekDept     = Number(deptData?.maxWeek || 0);
     const perUserMaxWeek  = (maxWeekDept / (employeesCount || 1)) || 1;
@@ -117,25 +119,26 @@ export async function renderDashboard(user) {
 
     const personalWeekPercent  = Math.min(100, Math.round((personalWeekPoints  / perUserMaxWeek)  * 100));
     const personalMonthPercent = Math.min(100, Math.round((personalMonthPoints / perUserMaxMonth) * 100));
-    const deptMonthPercent     = Math.min(100, Math.round(Number(deptData?.monthPercent || 0)));
 
-    // 1) Прогресс отдела — месяц
+    // 1) «Прогресс отдела — месяц»: ширина и иконка по БАЛЛАМ (0..100)
     const deptBlock = document.createElement('div');
     const h4d = document.createElement('h4');
     h4d.textContent = 'Прогресс отдела — месяц (текущий)';
+    const deptMonthPoints = Number(deptData?.monthSum || 0);
+
     deptBlock.append(
       h4d,
-      createProgressBar(deptMonthPercent, {
+      createProgressBar(deptData?.monthPercent ?? 0, {
         size: 'department',
         widthMode: 'points100',
-        widthPoints: Number(deptData?.monthSum || 0),
+        widthPoints: deptMonthPoints,
         iconMode: 'points',
-        iconValue: Number(deptData?.monthSum || 0)
+        iconValue: deptMonthPoints
       })
     );
     employeeSection.append(deptBlock);
 
-    // 2) Личные прогрессы
+    // 2) Личные бары:
     const grid = document.createElement('div');
     grid.className = 'row g-4';
 
@@ -145,8 +148,9 @@ export async function renderDashboard(user) {
       h4w,
       createProgressBar(personalWeekPercent, {
         size: 'user',
-        iconMode: 'points',
-        iconValue: Number(personalWeekPoints || 0)
+        widthMode: 'percent',     // ширина — по проценту
+        iconMode: 'points',       // иконка — по личным баллам
+        iconValue: personalWeekPoints
       })
     );
 
@@ -156,8 +160,9 @@ export async function renderDashboard(user) {
       h4m,
       createProgressBar(personalMonthPercent, {
         size: 'user',
+        widthMode: 'percent',
         iconMode: 'points',
-        iconValue: Number(personalMontsPoints || 0)
+        iconValue: personalMonthPoints // <-- исправлено: было personalMontsPoints
       })
     );
 
@@ -166,7 +171,7 @@ export async function renderDashboard(user) {
   }
 
   async function refreshDashboardData() {
-    // один батч-вызов
+    // Один вызов вместо трёх
     const { dept, users, usersPrevWeek } = await apiBootstrap();
 
     const deptData  = dept || {};
@@ -180,49 +185,32 @@ export async function renderDashboard(user) {
 
     if (role === 'employee') {
       renderEmployeePanel({ deptData, usersArr });
-      deptBlock.append(
-        h4d,
-        createProgressBar(
-          deptMonthPercent,
-          'department',
-          { iconMode: 'points', valueForIcon: Number(deptData?.monthSum ?? 0) }
-        )
-       );
     }
-
-    // Персональные максимумы для бейджей
-    const perUserMaxWeek  = ((Number(deptData?.maxWeek || 0) / Number(deptData?.employeesCount || 1)) || 1);
-    const perUserMaxMonth = perUserMaxWeek * Number(deptData?.weeksInMonth || 4) || 1;
 
     if (role !== 'employee') {
       deptSection.innerHTML = '';
       const deptTitle = document.createElement('h3');
       deptTitle.textContent = 'Прогресс отдела (месяц)';
+      const deptMonthPoints = Number(deptData?.monthSum || 0);
       deptSection.append(
         deptTitle,
-        createProgressBar(Number(deptData?.monthPercent ?? 0), {
+        createProgressBar(deptData?.monthPercent ?? 0, {
           size: 'department',
           widthMode: 'points100',
-          widthPoints: Number(deptData?.monthSum || 0),
+          widthPoints: deptMonthPoints,
           iconMode: 'points',
-          iconValue: Number(deptData?.monthSum || 0)
+          iconValue: deptMonthPoints
         })
       );
     }
 
     leaderWeekSec.innerHTML = '';
-    leaderWeekSec.append(
-      buildLeaderWeekHeader(),
-      createLeaderboard(employeesPrevW, 'week', perUserMaxWeek)
-    );
+    leaderWeekSec.append(buildLeaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
 
     leaderMonthSec.innerHTML = '';
     const h4Month = document.createElement('h4');
     h4Month.textContent = 'ТОП-3 за месяц';
-    leaderMonthSec.append(
-      h4Month,
-      createLeaderboard(employees, 'month', perUserMaxMonth)
-    );
+    leaderMonthSec.append(h4Month, createLeaderboard(employees, 'month'));
 
     tableSection.innerHTML = '';
     const tableTitle = document.createElement('h4');
@@ -237,7 +225,7 @@ export async function renderDashboard(user) {
     try { loader.remove(); } catch {}
   }
 
-  // После записи KPI из админки — обновляем
+  // Слушаем событие из админ-панели
   document.addEventListener('kpi:recorded', async () => {
     await refreshDashboardData();
   });
