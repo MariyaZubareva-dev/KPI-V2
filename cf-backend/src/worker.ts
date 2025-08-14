@@ -28,7 +28,6 @@ function jsonResp(obj: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-// ← ключевая правка: обычные функции вместо стрелок/дженериков
 function ok(data: unknown): Response {
   return jsonResp({ success: true, data });
 }
@@ -107,10 +106,8 @@ async function all<T = any>(db: D1Database, sql: string, bind: any[] = []): Prom
 const DEFAULT_TTL = 60; // секунд
 
 async function cacheGet(env: Env, req: Request, compute: () => Promise<Response>, ttl = DEFAULT_TTL): Promise<Response> {
-  // Кэшируем только GET
   if (req.method !== "GET") return withCORS(env, await compute());
 
-  // ← ключевая правка: берём кэш безопасно, через globalThis, с фоллбеком
   const cfCache = (globalThis as any)?.caches?.default as Cache | undefined;
   const key = new Request(req.url, { method: "GET" });
 
@@ -129,6 +126,23 @@ async function cacheGet(env: Env, req: Request, compute: () => Promise<Response>
   if (cfCache) await cfCache.put(key, cacheable.clone());
 
   return withCORS(env, cacheable);
+}
+
+// Удаление кэшированных агрегатов прогресса
+async function purgeProgressCache(base: URL) {
+  const cfCache = (globalThis as any)?.caches?.default as Cache | undefined;
+  if (!cfCache) return;
+  const paths = [
+    "/getprogress?scope=department",
+    "/getprogress?scope=users",
+    "/getprogress?scope=users_lastweek",
+  ];
+  await Promise.all(
+    paths.map((p) => {
+      const u = new URL(p, base);
+      return cfCache.delete(new Request(u.toString(), { method: "GET" }));
+    })
+  );
 }
 
 /* ================ handlers ================= */
@@ -352,6 +366,9 @@ async function handleRecordKPI(env: Env, url: URL) {
     .run();
 
   await logEvent(env, "kpi_recorded_backend", actorEmail, Number(userID), Number(kpiId), Number(kpi.weight || 0), { date: dateStr });
+
+  // Инвалидация кэша агрегатов
+  await purgeProgressCache(url);
 
   return ok({ userID, kpiId, score: kpi.weight || 0, date: dateStr });
 }
