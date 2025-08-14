@@ -1,61 +1,72 @@
 // js/auth.js
-import { login } from './api.js';
+import { login as apiLogin, logEvent, bootstrap } from './api.js';
 import { renderDashboard } from './dashboard.js';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const loginSection = document.getElementById('login-section');
-  const stored = getStoredUser(); // ← корректная проверка наличия пользователя
+// утилиты
+function getSavedUser() {
+  try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
+}
+function saveUser(u) { localStorage.setItem('user', JSON.stringify(u)); }
+function normalizeUser(src, fallbackEmail = '') {
+  const email = String(src?.email || src?.Email || fallbackEmail || '').toLowerCase();
+  const role  = String(src?.role || '').toLowerCase();
+  const name  = src?.name || src?.Name || email || 'Пользователь';
+  return { email, role, name };
+}
 
-  if (stored) {
+document.addEventListener('DOMContentLoaded', () => {
+  const loginSection  = document.getElementById('login-section');
+  const emailInput    = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const loginBtn      = document.getElementById('login-button');
+
+  // если пользователь уже есть — сразу в приложение
+  const saved = getSavedUser();
+  if (saved && saved.email) {
     if (loginSection) loginSection.style.display = 'none';
-    renderDashboard(stored).catch(err => {
+    renderDashboard(saved).catch(err => {
       console.error('Ошибка при рендере дашборда:', err);
       alert('Не удалось загрузить дашборд. Проверьте консоль.');
     });
     return;
   }
 
-  // нет пользователя — показываем форму
-  if (!loginSection) return;
-  loginSection.style.display = 'block';
+  // показываем форму логина
+  if (loginSection) loginSection.style.display = 'block';
 
-  const btn = document.getElementById('login-button');
-  btn?.addEventListener('click', async () => {
-    const email = (document.getElementById('email')?.value || '').trim();
-    const password = (document.getElementById('password')?.value || '');
-
+  async function doLogin() {
+    const email = String(emailInput?.value || '').trim().toLowerCase();
+    const password = String(passwordInput?.value || '').trim();
     if (!email || !password) {
       alert('Введите email и пароль');
       return;
     }
 
     try {
-      const resp = await login(email, password);
-      if (!resp?.success) {
-        alert('Неверные email или пароль');
-        return;
-      }
+      loginBtn && (loginBtn.disabled = true);
 
-      const user = { id: resp.email, email: resp.email, role: resp.role, name: resp.name };
-      localStorage.setItem('user', JSON.stringify(user));
-      location.reload();
+      const resp = await apiLogin(email, password);
+      if (!resp || resp.success !== true) throw new Error('Неверный email или пароль');
+
+      const user = normalizeUser(resp, email);
+      saveUser(user);
+
+      try { await logEvent('login_success', { email: user.email }); } catch {}
+      try { await bootstrap(); } catch {}
+
+      if (loginSection) loginSection.style.display = 'none';
+      await renderDashboard(user);
     } catch (e) {
       console.error('Ошибка авторизации:', e);
-      alert('Ошибка при входе. Проверьте консоль.');
+      alert(e?.message || 'Ошибка при входе');
+      try { await logEvent('login_failed', { email }); } catch {}
+    } finally {
+      loginBtn && (loginBtn.disabled = false);
     }
-  });
-});
-
-function getStoredUser() {
-  try {
-    const raw = localStorage.getItem('user');
-    if (!raw) return null;                     // ← ключа нет — возвращаем null
-    const obj = JSON.parse(raw);
-    if (!obj || typeof obj !== 'object') return null;
-    // минимальная валидация, чтобы не рендерить «Пользователь»
-    if (!obj.email || !obj.role) return null;
-    return obj;
-  } catch {
-    return null;
   }
-}
+
+  // обработчики
+  loginBtn?.addEventListener('click', doLogin);
+  passwordInput?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') doLogin(); });
+  emailInput?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') doLogin(); });
+});
