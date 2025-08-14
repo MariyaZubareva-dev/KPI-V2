@@ -136,6 +136,7 @@ async function purgeProgressCache(base: URL) {
     "/getprogress?scope=department",
     "/getprogress?scope=users",
     "/getprogress?scope=users_lastweek",
+    "/bootstrap",
   ];
   await Promise.all(
     paths.map((p) => {
@@ -310,6 +311,111 @@ async function handleGetUsersProgressLastWeek(env: Env) {
 
   return ok(data);
 }
+// === /bootstrap — единый батч
+async function handleBootstrap(env: Env, url: URL) {
+  // 1) department (как в handleGetDeptProgress)
+  const now = new Date();
+  const { start, end } = getWeekBounds(now);
+  const month = now.getMonth();
+  const year  = now.getFullYear();
+
+  const weekSumRow = await one<{ sum: number }>(
+    env.DB,
+    `SELECT COALESCE(SUM(score),0) AS sum
+     FROM progress
+     WHERE date BETWEEN ? AND ?`,
+    [fmtYYYYMMDD(start), fmtYYYYMMDD(end)]
+  );
+  const weekSum = Number(weekSumRow?.sum || 0);
+
+  const monthSumRow = await one<{ sum: number }>(
+    env.DB,
+    `SELECT COALESCE(SUM(score),0) AS sum
+     FROM progress
+     WHERE strftime('%Y', date)=? AND strftime('%m', date)=?`,
+    [String(year), `${month + 1}`.padStart(2, "0")]
+  );
+  const monthSum = Number(monthSumRow?.sum || 0);
+
+  const weightsRow = await one<{ sum: number }>(
+    env.DB, `SELECT COALESCE(SUM(weight),0) AS sum FROM kpis WHERE active=1`
+  );
+  const weightsSum = Number(weightsRow?.sum || 0);
+
+  const empRow = await one<{ cnt: number }>(
+    env.DB, `SELECT COUNT(1) AS cnt FROM users WHERE active=1 AND lower(role)='employee'`
+  );
+  const employeesCount = Number(empRow?.cnt || 1);
+
+  const maxWeek = weightsSum * employeesCount;
+
+  const first = new Date(year, month, 1);
+  const last  = new Date(year, month + 1, 0);
+  const weekKeys = new Set<string>();
+  for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
+    const y = d.getFullYear();
+    const w = getWeekNumberISO(d);
+    weekKeys.add(`${y}-${w}`);
+  }
+  const weeksInMonth = weekKeys.size;
+  const maxMonth = maxWeek * weeksInMonth;
+
+  const weekPercent  = Math.min(100, Math.round((weekSum  / (maxWeek  || 1)) * 100));
+  const monthPercent = Math.min(100, Math.round((monthSum / (maxMonth || 1)) * 100));
+
+  const dept = { weekSum, monthSum, maxWeek, maxMonth, weeksInMonth, employeesCount, weekPercent, monthPercent };
+
+  // 2) users (this_week + month)
+  const yearStr = String(now.getFullYear());
+  const monthStr = `${now.getMonth() + 1}`.padStart(2, "0");
+  const users = await all<{ id: number; name: string; email: string; role: string }>(
+    env.DB, `SELECT id, name, email, role FROM users WHERE active=1`
+  );
+
+  const weekRows = await all<{ user_id: number; sum: number }>(
+    env.DB,
+    `SELECT user_id, COALESCE(SUM(score),0) AS sum
+     FROM progress
+     WHERE date BETWEEN ? AND ?
+     GROUP BY user_id`,
+    [fmtYYYYMMDD(start), fmtYYYYMMDD(end)]
+  );
+  const weekMap = new Map<number, number>(weekRows.map(r => [r.user_id, Number(r.sum || 0)]));
+
+  const monthRows = await all<{ user_id: number; sum: number }>(
+    env.DB,
+    `SELECT user_id, COALESCE(SUM(score),0) AS sum
+     FROM progress
+     WHERE strftime('%Y', date)=? AND strftime('%m', date)=?
+     GROUP BY user_id`,
+    [yearStr, monthStr]
+  );
+  const monthMap = new Map<number, number>(monthRows.map(r => [r.user_id, Number(r.sum || 0)]));
+
+  const usersAgg = users.map(u => ({
+    id: u.id, name: u.name, email: u.email, role: u.role,
+    week: weekMap.get(u.id) || 0, month: monthMap.get(u.id) || 0
+  }));
+
+  // 3) usersPrevWeek (полная прошлая неделя)
+  const { start: prevStart, end: prevEnd } = getLastFullWeekBounds(new Date());
+  const prevRows = await all<{ user_id: number; sum: number }>(
+    env.DB,
+    `SELECT user_id, COALESCE(SUM(score),0) AS sum
+     FROM progress
+     WHERE date BETWEEN ? AND ?
+     GROUP BY user_id`,
+    [fmtYYYYMMDD(prevStart), fmtYYYYMMDD(prevEnd)]
+  );
+  const prevMap = new Map<number, number>(prevRows.map(r => [r.user_id, Number(r.sum || 0)]));
+
+  const usersPrevWeek = users.map(u => ({
+    id: u.id, name: u.name, email: u.email, role: u.role,
+    week: prevMap.get(u.id) || 0, month: 0
+  }));
+
+  return ok({ dept, users: usersAgg, usersPrevWeek });
+}
 
 // === user KPIs за текущую неделю
 async function handleGetUserKPIs(env: Env, url: URL) {
@@ -435,7 +541,10 @@ export default {
 
     try {
       // Кэширующие маршруты (GET агрегаты)
-      if (req.method === "GET" && route === "/getprogress") {
+      if (req.method === "GET" && (route === "/getprogress" || route === "/bootstrap")) {
+        if (route === "/bootstrap") {
+            return cacheGet(env, req, () => handleBootstrap(env, url), DEFAULT_TTL);
+        }
         const scope = (url.searchParams.get("scope") || "department").toLowerCase();
         const cacheable = scope === "department" || scope === "users" || scope === "users_lastweek";
         if (cacheable) {
@@ -453,6 +562,8 @@ export default {
         res = await handleRecordKPI(env, url);
       } else if (route === "/log") {
         res = await handleLog(env, url);
+      } else if (route === "/bootstrap") {
+        res = await handleBootstrap(env, url);
       } else {
         res = err("Invalid action", 400);
       }
