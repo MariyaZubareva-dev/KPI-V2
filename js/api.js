@@ -1,26 +1,21 @@
 // js/api.js
 import { API_BASE } from './config.js';
 
-// Приводим ответ к JSON и убираем возможный <pre>
+// Нормализация текстового ответа в JSON (с учётом возможных <pre>)
 async function toJSON(res) {
   const txt = await res.text();
   const clean = txt.trim()
     .replace(/^<pre[^>]*>/i, '')
     .replace(/<\/pre>$/i, '');
   if (!clean) return {};
-  try {
-    return JSON.parse(clean);
-  } catch {
-    return { success: false, message: 'Bad JSON', raw: clean };
-  }
+  try { return JSON.parse(clean); }
+  catch { return { success: false, message: 'Bad JSON', raw: clean }; }
 }
 
 function buildUrl(path, params = {}) {
   const url = new URL(path, API_BASE);
   Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== '') {
-      url.searchParams.set(k, String(v));
-    }
+    if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   });
   return url.toString();
 }
@@ -31,22 +26,20 @@ async function httpGet(path, params) {
     mode: 'cors',
     credentials: 'omit',
   });
-  if (!res.ok) {
-    throw new Error(`${path} failed: ${res.status} ${res.statusText}`);
-  }
+  if (!res.ok) throw new Error(`${path} failed: ${res.status} ${res.statusText}`);
   return toJSON(res);
 }
 
 /* ---------- public API ---------- */
 
-// Логин (воркер возвращает поля верхнего уровня)
+// Логин: { success, email, role, name } | { success:false }
 export async function login(email, password) {
-  const data = await httpGet('/login', { email, password });
-  return data; // { success, email, role, name } или { success:false }
+  return httpGet('/login', { email, password });
 }
 
-// Выход: на бэкенде роута нет — чистим только локальное состояние
-export async function logout() {
+// Выход: пишем событие и завершаем локально
+export async function logout(email) {
+  try { await logEvent('logout', { email }); } catch {}
   return { success: true };
 }
 
@@ -54,35 +47,27 @@ export async function logout() {
 export async function getProgress(scope, userID) {
   const params = { scope };
   if (userID) params.userID = userID;
-  const data = await httpGet('/getprogress', params);
-  if (data?.success === false) throw new Error(data?.message || 'getProgress returned error');
-  return data.data ?? data;
+  return httpGet('/getprogress', params);
 }
 
-// KPI одного пользователя за текущую неделю
+// KPI одного пользователя
 export async function getUserKPIs(userID, period = 'this_week') {
-  const data = await httpGet('/getprogress', { scope: 'user', userID, period });
-  if (data?.success === false) throw new Error(data?.message || 'getUserKPIs returned error');
-  return data.data ?? data;
+  return httpGet('/getprogress', { scope: 'user', userID, period });
 }
 
-// Агрегация по пользователям (this_week | prev_week)
+// Агрегация по пользователям
 export async function getUsersAggregate(period = 'this_week') {
   const scope = period === 'prev_week' ? 'users_lastweek' : 'users';
-  const data = await httpGet('/getprogress', { scope });
-  if (data?.success === false) throw new Error(data?.message || 'getUsersAggregate returned error');
-  const arr = data.data ?? data;
-  return Array.isArray(arr) ? arr : [];
+  return httpGet('/getprogress', { scope });
 }
 
 // Записать KPI (только админ)
 export async function recordKPI({ userID, kpiId, score, date, actorEmail }) {
-  const data = await httpGet('/recordkpi', { userID, kpiId, score, date, actorEmail });
-  if (data?.success === false) throw new Error(data?.message || 'recordKPI returned error');
-  return data.data ?? data;
+  // score бэкенд рассчитывает сам по весу KPI, передавать не обязательно
+  return httpGet('/recordkpi', { userID, kpiId, date, actorEmail });
 }
 
-// Логирование события в D1 logs
+// Логирование события
 export async function logEvent(event, extra = {}) {
   const params = {
     event,
@@ -90,12 +75,10 @@ export async function logEvent(event, extra = {}) {
     email:   extra?.email  || extra?.user?.email || '',
     details: extra && Object.keys(extra).length ? JSON.stringify(extra) : ''
   };
-  const data = await httpGet('/log', params);
-  if (data?.success === false) throw new Error(data?.message || 'logEvent returned error');
-  return data.data ?? data;
+  return httpGet('/log', params);
 }
 
-// Единый батч начальной загрузки
+// Единый батч для начальной загрузки
 export async function bootstrap() {
   const data = await httpGet('/bootstrap');
   if (data?.success === false) throw new Error(data?.message || 'bootstrap returned error');
