@@ -1,11 +1,12 @@
 // js/dashboard.js
-import { getProgress as apiGetProgress, logEvent } from './api.js';
+import { getProgress as apiGetProgress, logEvent, bootstrap as apiBootstrap } from './api.js';
 import {
   createProgressBar,
   createUsersTable,
   createLeaderboard,
   createLoader
 } from './ui-components.js';
+
 
 /**
  * Рендер дашборда
@@ -144,7 +145,7 @@ export async function renderDashboard(user) {
 
   async function refreshDashboardData() {
     // ❗ Один вызов вместо трёх
-    const { dept, users, usersPrevWeek } = await bootstrap();
+    const { dept, users, usersPrevWeek } = await apiBootstrap();
 
     const deptData  = dept || {};
     const usersArr  = Array.isArray(users) ? users : [];
