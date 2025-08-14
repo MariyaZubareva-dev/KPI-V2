@@ -1,7 +1,7 @@
 // js/api.js
 import { API_BASE } from './config.js';
 
-// Приводим ответ к JSON и убираем <pre>
+// Приводим ответ к JSON и убираем возможный <pre>
 async function toJSON(res) {
   const txt = await res.text();
   const clean = txt.trim()
@@ -29,7 +29,7 @@ async function httpGet(path, params) {
   const res = await fetch(buildUrl(path, params), {
     method: 'GET',
     mode: 'cors',
-    credentials: 'omit'
+    credentials: 'omit',
   });
   if (!res.ok) {
     throw new Error(`${path} failed: ${res.status} ${res.statusText}`);
@@ -39,48 +39,65 @@ async function httpGet(path, params) {
 
 /* ---------- public API ---------- */
 
-// Логин
+// Логин (воркер возвращает поля верхнего уровня)
 export async function login(email, password) {
-  return httpGet('/login', { email, password });
+  const data = await httpGet('/login', { email, password });
+  return data; // { success, email, role, name } или { success:false }
 }
 
-// Выход
+// Выход: на бэкенде роута нет — чистим только локальное состояние
 export async function logout() {
-  return httpGet('/logout');
+  return { success: true };
 }
 
-// Прогресс (универсальный геттер)
+// Универсальный геттер прогресса
 export async function getProgress(scope, userID) {
   const params = { scope };
   if (userID) params.userID = userID;
-  return httpGet('/getProgress', params);
+  const data = await httpGet('/getprogress', params);
+  if (data?.success === false) throw new Error(data?.message || 'getProgress returned error');
+  return data.data ?? data;
 }
 
-// KPI одного пользователя
+// KPI одного пользователя за текущую неделю
 export async function getUserKPIs(userID, period = 'this_week') {
-  return httpGet('/getProgress', { scope: 'user', userID, period });
+  const data = await httpGet('/getprogress', { scope: 'user', userID, period });
+  if (data?.success === false) throw new Error(data?.message || 'getUserKPIs returned error');
+  return data.data ?? data;
 }
 
-// Агрегация по пользователям
+// Агрегация по пользователям (this_week | prev_week)
 export async function getUsersAggregate(period = 'this_week') {
   const scope = period === 'prev_week' ? 'users_lastweek' : 'users';
-  return httpGet('/getProgress', { scope });
+  const data = await httpGet('/getprogress', { scope });
+  if (data?.success === false) throw new Error(data?.message || 'getUsersAggregate returned error');
+  const arr = data.data ?? data;
+  return Array.isArray(arr) ? arr : [];
 }
 
 // Записать KPI (только админ)
 export async function recordKPI({ userID, kpiId, score, date, actorEmail }) {
-  return httpGet('/recordKPI', { userID, kpiId, score, date, actorEmail });
+  const data = await httpGet('/recordkpi', { userID, kpiId, score, date, actorEmail });
+  if (data?.success === false) throw new Error(data?.message || 'recordKPI returned error');
+  return data.data ?? data;
 }
 
-// Логирование события
+// Логирование события в D1 logs
 export async function logEvent(event, extra = {}) {
   const params = {
     event,
-    userID: extra?.userID || extra?.user?.id || '',
-    email:  extra?.email  || extra?.user?.email || '',
-    details: extra && Object.keys(extra).length
-      ? JSON.stringify(extra)
-      : ''
+    userID:  extra?.userID || extra?.user?.id || '',
+    email:   extra?.email  || extra?.user?.email || '',
+    details: extra && Object.keys(extra).length ? JSON.stringify(extra) : ''
   };
-  return httpGet('/logEvent', params);
+  const data = await httpGet('/log', params);
+  if (data?.success === false) throw new Error(data?.message || 'logEvent returned error');
+  return data.data ?? data;
+}
+
+// Единый батч начальной загрузки
+export async function bootstrap() {
+  const data = await httpGet('/bootstrap');
+  if (data?.success === false) throw new Error(data?.message || 'bootstrap returned error');
+  return data.data ?? data; // { dept, users, usersPrevWeek }
 }

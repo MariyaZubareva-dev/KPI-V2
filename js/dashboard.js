@@ -1,5 +1,5 @@
 // js/dashboard.js
-import { getProgress as apiGetProgress, logEvent } from './api.js';
+import { bootstrap, logEvent } from './api.js';
 import {
   createProgressBar,
   createUsersTable,
@@ -38,15 +38,12 @@ export async function renderDashboard(user) {
   toolbar.appendChild(logoutBtn);
   app.appendChild(toolbar);
 
-  // Контейнер панели сотрудника
-  const employeeSection = document.createElement('section');
-  employeeSection.id = 'employee-section';
-
-  // Общие разделы
-  const deptSection    = document.createElement('section'); deptSection.id    = 'dept-section';
-  const leaderWeekSec  = document.createElement('section'); leaderWeekSec.id  = 'leader-week';
-  const leaderMonthSec = document.createElement('section'); leaderMonthSec.id = 'leader-month';
-  const tableSection   = document.createElement('section'); tableSection.id   = 'users-table';
+  // Контейнеры секций
+  const employeeSection = document.createElement('section'); employeeSection.id = 'employee-section';
+  const deptSection     = document.createElement('section'); deptSection.id    = 'dept-section';
+  const leaderWeekSec   = document.createElement('section'); leaderWeekSec.id  = 'leader-week';
+  const leaderMonthSec  = document.createElement('section'); leaderMonthSec.id = 'leader-month';
+  const tableSection    = document.createElement('section'); tableSection.id   = 'users-table';
 
   if (role === 'employee') {
     app.append(employeeSection, leaderWeekSec, leaderMonthSec, tableSection);
@@ -59,6 +56,7 @@ export async function renderDashboard(user) {
 
   let lastEmployees = [];
 
+  // helpers
   function getLastFullWeekBounds() {
     const now = new Date();
     const day = now.getDay(); // 0..6
@@ -80,7 +78,7 @@ export async function renderDashboard(user) {
   function buildLeaderWeekHeader() {
     const wrap = document.createElement('div');
     const h4 = document.createElement('h4'); h4.textContent = 'ТОП-3 за неделю';
-    const sub = document.createElement('div'); sub.className = 'text-tertiary caption mt-1';
+    const sub = document.createElement('div'); sub.className = 'text-terтиary caption mt-1';
     const { start, end } = getLastFullWeekBounds();
     sub.textContent = `за прошлую неделю (Пн ${fmtDDMM(start)} — Вс ${fmtDDMM(end)})`;
     wrap.append(h4, sub);
@@ -121,7 +119,7 @@ export async function renderDashboard(user) {
     const personalMonthPercent = Math.min(100, Math.round((personalMonthPoints / perUserMaxMonth) * 100));
     const deptMonthPercent     = Math.min(100, Math.round(Number(deptData?.monthPercent || 0)));
 
-    // 1) ВЕРХОМ — прогресс отдела (месяц)
+    // 1) Прогресс отдела — месяц
     const deptBlock = document.createElement('div');
     const h4d = document.createElement('h4');
     h4d.textContent = 'Прогресс отдела — месяц (текущий)';
@@ -145,22 +143,15 @@ export async function renderDashboard(user) {
   }
 
   async function refreshDashboardData() {
-    const [deptRes, usersRes, usersPrevRes] = await Promise.all([
-      apiGetProgress('department'),
-      apiGetProgress('users'),
-      apiGetProgress('users_lastweek')
-    ]);
+    // ❗ Один вызов вместо трёх
+    const { dept, users, usersPrevWeek } = await bootstrap();
 
-    const deptData  = deptRes?.data ?? deptRes;
-    const usersArr  = (usersRes?.data ?? usersRes) || [];
-    const usersPrev = (usersPrevRes?.data ?? usersPrevRes) || [];
+    const deptData  = dept || {};
+    const usersArr  = Array.isArray(users) ? users : [];
+    const usersPrev = Array.isArray(usersPrevWeek) ? usersPrevWeek : [];
 
-    const employees = Array.isArray(usersArr)
-      ? usersArr.filter(u => String(u.role || '').toLowerCase() === 'employee')
-      : [];
-    const employeesPrevW = Array.isArray(usersPrev)
-      ? usersPrev.filter(u => String(u.role || '').toLowerCase() === 'employee')
-      : [];
+    const employees = usersArr.filter(u => String(u.role || '').toLowerCase() === 'employee');
+    const employeesPrevW = usersPrev.filter(u => String(u.role || '').toLowerCase() === 'employee');
 
     lastEmployees = employees;
 
@@ -168,7 +159,6 @@ export async function renderDashboard(user) {
       renderEmployeePanel({ deptData, usersArr });
     }
 
-    // Для не-employee — общий прогресс отдела (чтобы не дублировать у employee)
     if (role !== 'employee') {
       deptSection.innerHTML = '';
       const deptTitle = document.createElement('h3');
@@ -194,7 +184,7 @@ export async function renderDashboard(user) {
     await refreshDashboardData();
     try { await logEvent('dashboard_view', { email: user?.email || user?.Email }); } catch {}
   } finally {
-    loader.remove();
+    try { loader.remove(); } catch {}
   }
 
   // Слушаем событие из админ-панели
