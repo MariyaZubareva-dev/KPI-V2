@@ -44,21 +44,21 @@ export function createProgressBar(value, opts = {}) {
     pointsLabel
   } = opts;
 
-  // ширина в %
   const widthPercent = widthMode === 'points100'
     ? clampPercent(Number(widthPoints ?? iconValue ?? 0))
     : clampPercent(value);
 
-  // метрика для иконки/подписи
   const iconMetric = Number(iconValue ?? (iconMode === 'percent' ? widthPercent : 0)) || 0;
 
-  // обёртка
   const wrapper = document.createElement('div');
   wrapper.classList.add(`progress-${size}`, 'mb-3');
 
-  // полоса
+  // Полоса
   const bar = document.createElement('div');
   bar.classList.add('progress');
+  // важное — позволяем оверлею выходить за пределы закрашенной части
+  bar.style.position = 'relative';
+  bar.style.overflow = 'visible';
 
   const inner = document.createElement('div');
   inner.classList.add('progress-bar');
@@ -67,42 +67,41 @@ export function createProgressBar(value, opts = {}) {
   inner.setAttribute('aria-valuenow', String(widthPercent));
   inner.setAttribute('aria-valuemin', '0');
   inner.setAttribute('aria-valuemax', '100');
-  inner.style.position = 'relative'; // для бейджа баллов
 
-  // цвет по порогам
   inner.style.backgroundColor =
     (widthMode === 'points100')
       ? colorByPoints(Number(widthPoints ?? iconValue ?? 0))
       : colorByPercent(widthPercent);
 
-  // бейдж с числами баллов на закрашенной линии
+  bar.appendChild(inner);
+
+  // Оверлей-метка с числом баллов на окрашенной границе
   if (pointsLabel !== undefined && pointsLabel !== null && pointsLabel !== '') {
     const val = document.createElement('span');
     val.className = 'progress-value';
     val.textContent = String(pointsLabel);
     val.style.position = 'absolute';
     val.style.top = '50%';
-    val.style.transform = 'translateY(-50%)';
+    val.style.left = `${widthPercent}%`;
+    // если заливка короткая — уводим метку вправо и делаем тёмной,
+    // если нормальная — чуть внутрь заливки и белой
+    if (widthPercent < 12) {
+      val.style.transform = 'translate(6px, -50%)';
+      val.style.color = '#111';
+      val.style.textShadow = 'none';
+    } else {
+      val.style.transform = 'translate(-8px, -50%)';
+      val.style.color = '#fff';
+      val.style.textShadow = '0 1px 2px rgba(0,0,0,.35)';
+    }
     val.style.fontWeight = '700';
     val.style.fontSize = '12px';
     val.style.whiteSpace = 'nowrap';
-
-    if (widthPercent >= 5) {
-      // внутри закрашенной части
-      val.style.right = '6px';
-      val.style.color = '#fff';
-      val.style.textShadow = '0 1px 2px rgba(0,0,0,.25)';
-    } else {
-      // если заполнение маленькое — вынесем метку наружу
-      val.style.left = 'calc(100% + 8px)';
-      val.style.color = '#111';
-    }
-    inner.appendChild(val);
+    val.style.pointerEvents = 'none';
+    bar.appendChild(val);
   }
 
-  bar.appendChild(inner);
-
-  // иконка + короткая подпись (строка)
+  // Иконка + подпись в одну строку
   const charRow = document.createElement('div');
   charRow.classList.add('kpi-char-row');
   charRow.style.marginBottom = '10px';
@@ -127,7 +126,7 @@ export function createProgressBar(value, opts = {}) {
   caption.style.lineHeight = '1';
   caption.style.color = '#6b7280';
   caption.style.fontWeight = '500';
-  caption.style.whiteSpace = 'nowrap'; // одна строка
+  caption.style.whiteSpace = 'nowrap';
 
   iconWrap.append(img, caption);
   track.appendChild(iconWrap);
@@ -136,6 +135,7 @@ export function createProgressBar(value, opts = {}) {
   wrapper.append(bar, charRow);
   return wrapper;
 }
+
 
 /* ---------- helpers ---------- */
 
