@@ -87,7 +87,7 @@ export function createProgressBar(value, opts = {}) {
     val.style.fontSize = '12px';
     val.style.whiteSpace = 'nowrap';
 
-    if (widthPercent >= 12) {
+    if (widthPercent >= 5) {
       // внутри закрашенной части
       val.style.right = '6px';
       val.style.color = '#fff';
