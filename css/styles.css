@@ -121,3 +121,31 @@ a:hover, .link:hover{ text-decoration: underline; }
 }
 
 .badge-icon { margin-left: .4rem; font-size: 1.1rem; line-height: 1; }
+
+/* Базовый трек прогресса */
+.progress {
+  background-color: #e9edf2; /* нейтральный серый трек */
+  height: 14px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Заполнения под пороги баллов */
+.progress-bar.bar-critical { background-color: #FF0404; } /* 0–29 */
+.progress-bar.bar-30       { background-color: #ffd966; } /* 30–49 */
+.progress-bar.bar-50       { background-color: #9fc5e8; } /* 50–69 */
+.progress-bar.bar-70       { background-color: #36B37E; } /* ≥70 */
+
+/* Ряд с персонажем над/вдоль прогресса */
+.kpi-char-row {
+  height: 72px;       /* под иконку 64px + отступы */
+  position: relative;
+  margin: 8px 0 4px 0;
+}
+.kpi-char-track {
+  height: 100%;
+}
+.kpi-char-track img,
+.kpi-char-track span {
+  vertical-align: middle;
+}
