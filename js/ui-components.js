@@ -11,9 +11,15 @@ export function createLoader(text = 'Загружаем данные…') {
   return box;
 }
 
-/** Прогресс-бар с иконкой-персонажем (по % прогресса) */
-export function createProgressBar(percent, size = 'department') {
+/**
+ * Прогресс-бар с иконкой-персонажем
+ * percent — ширина бара
+ * opts.iconMode: 'percent' | 'points' — по чему выбирать картинку
+ * opts.valueForIcon: число, если iconMode = 'points' (например, monthSum)
+ */
+export function createProgressBar(percent, size = 'department', opts = {}) {
   const p = Math.max(0, Math.min(100, Number(percent) || 0));
+  const { iconMode = 'percent', valueForIcon = null } = opts;
 
   const wrapper = document.createElement('div');
   wrapper.classList.add(`progress-${size}`, 'mb-3');
@@ -38,7 +44,10 @@ export function createProgressBar(percent, size = 'department') {
   track.style.width = `${p}%`;
   track.style.textAlign = 'right';
 
-  const img = createCharacterImage(p);
+  const img = (iconMode === 'points' && typeof valueForIcon === 'number')
+    ? createCharacterImageByPoints(valueForIcon)
+    : createCharacterImageByPercent(p);
+
   track.appendChild(img);
   charRow.appendChild(track);
 
@@ -47,48 +56,64 @@ export function createProgressBar(percent, size = 'department') {
 }
 
 function barClassByPercent(p) {
-  if (p < 30) return 'bar-critical'; // красный
-  if (p < 50) return 'bar-30';       // 30–49
-  if (p < 70) return 'bar-50';       // 50–69
-  return 'bar-70';                   // ≥70
+  if (p < 30) return 'bar-critical';
+  if (p < 50) return 'bar-30';
+  if (p < 70) return 'bar-50';
+  return 'bar-70';
 }
 
-function createCharacterImage(percent) {
+/** Картинка по проценту (для личных прогрессов и т.п.) */
+function createCharacterImageByPercent(percent) {
+  return buildImage(
+    percent < 30 ? './images/krosh.png'
+  : percent < 50 ? './images/kopatych.png'
+  : percent < 70 ? './images/karkarych-sовunya.png'
+                 : './images/nyusha.png',
+    percent < 30 ? 'Старт (0–29%)'
+  : percent < 50 ? '≥30% от цели'
+  : percent < 70 ? '≥50% от цели'
+                 : '≥70% от цели'
+  );
+}
+
+/** Картинка по абсолютным баллам (для «Прогресс отдела (месяц)») */
+function createCharacterImageByPoints(points) {
+  const v = Number(points) || 0;
+  return buildImage(
+    v < 30 ? './images/krosh.png'
+  : v < 50 ? './images/kopatych.png'
+  : v < 70 ? './images/karkarych-sовunya.png'
+           : './images/nyusha.png',
+    v < 30 ? '0–29 баллов'
+  : v < 50 ? '30–49 баллов'
+  : v < 70 ? '50–69 баллов'
+           : '70+ баллов'
+  );
+}
+
+function buildImage(src, title) {
   const img = document.createElement('img');
   img.width = 64;
   img.height = 64;
   img.alt = 'KPI Character';
   img.decoding = 'async';
   img.loading = 'lazy';
-
-  if (percent < 30) {
-    img.src = './images/krosh.png';
-    img.title = 'Старт (0–29%)';
-  } else if (percent < 50) {
-    img.src = './images/kopatych.png';
-    img.title = '≥30% от цели';
-  } else if (percent < 70) {
-    img.src = './images/karkarych-sовunya.png';
-    img.title = '≥50% от цели';
-  } else {
-    img.src = './images/nyusha.png';
-    img.title = '≥70% от цели';
-  }
+  img.src = src;
+  img.title = title;
 
   img.onerror = () => {
     const fallback = document.createElement('span');
     fallback.style.fontSize = '28px';
-    if (percent < 30)      fallback.textContent = '🐰';
-    else if (percent < 50) fallback.textContent = '🥕';
-    else if (percent < 70) fallback.textContent = '🍵';
-    else                   fallback.textContent = '👑';
+    if (/0–29|0-29|0–29%/.test(title))       fallback.textContent = '🐰';
+    else if (/30–49|30-49/.test(title))      fallback.textContent = '🥕';
+    else if (/50–69|50-69/.test(title))      fallback.textContent = '🍵';
+    else                                     fallback.textContent = '👑';
     img.replaceWith(fallback);
   };
-
   return img;
 }
 
-/** Таблица сотрудников (суммы) */
+/** Таблица сотрудников */
 export function createUsersTable(users) {
   const safe = Array.isArray(users) ? users : [];
   if (safe.length === 0) {
@@ -126,20 +151,17 @@ export function createUsersTable(users) {
   return table;
 }
 
-/* ---------- BADGES: награды по % прогресса ---------- */
-
+/* ---------- BADGES (оставляем, если нужны) ---------- */
 export const BADGE_THRESHOLDS = [
   { pct: 100, icon: '🏆', title: '100% цели' },
   { pct: 75,  icon: '🥇', title: '75%+ цели' },
   { pct: 50,  icon: '🥈', title: '50%+ цели' },
   { pct: 25,  icon: '🥉', title: '25%+ цели' },
 ];
-
 export function badgeForPercent(pct) {
   for (const b of BADGE_THRESHOLDS) if (pct >= b.pct) return b;
   return null;
 }
-
 export function renderBadge(pct) {
   const b = badgeForPercent(pct);
   if (!b) return null;
@@ -150,7 +172,7 @@ export function renderBadge(pct) {
   return span;
 }
 
-/** ТОП-3 лидеров с бейджами по % от персонального максимума */
+/** ТОП-3 лидеров: убрали проценты, оставили только баллы (бейджи — опционально) */
 export function createLeaderboard(employees, mode = 'week', perUserMax = 1) {
   const safe = Array.isArray(employees) ? employees : [];
   const sorted = safe
@@ -176,7 +198,8 @@ export function createLeaderboard(employees, mode = 'week', perUserMax = 1) {
 
   sorted.forEach((u, i) => {
     const points = mode === 'week' ? Number(u.week || 0) : Number(u.month || 0);
-    const pct = perUserMax ? Math.round(points / perUserMax * 100) : 0;
+    const pct = perUserMax ? Math.round(points / perUserMax * 100) : 0; // для бейджа
+    const badge = renderBadge(pct);
 
     const row = document.createElement('div');
     row.className = 'd-flex align-items-center gap-2 my-1';
@@ -187,12 +210,10 @@ export function createLeaderboard(employees, mode = 'week', perUserMax = 1) {
 
     const meta = document.createElement('div');
     meta.className = 'text-secondary';
-    meta.textContent = `${points} • ${pct}%`;
-
-    const badge = renderBadge(pct);
+    meta.textContent = `${points}`; // ← проценты убраны
 
     row.append(name, meta);
-    if (badge) row.append(badge);
+    if (badge) row.append(badge); // можно убрать, если не нужны
     container.appendChild(row);
   });
 

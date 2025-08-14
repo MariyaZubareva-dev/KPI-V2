@@ -157,6 +157,14 @@ export async function renderDashboard(user) {
 
     if (role === 'employee') {
       renderEmployeePanel({ deptData, usersArr });
+      deptBlock.append(
+        h4d,
+        createProgressBar(
+          deptMonthPercent,
+          'department',
+          { iconMode: 'points', valueForIcon: Number(deptData?.monthSum ?? 0) }
+        )
+       );
     }
 
     // Персональные максимумы для бейджей
