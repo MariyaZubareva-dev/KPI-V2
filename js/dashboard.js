@@ -94,9 +94,7 @@ export async function renderDashboard(user) {
 
     employeeSection.innerHTML = '';
 
-    const head = document.createElement('h3');
-    head.textContent = `Здравствуйте, ${userName}`;
-    employeeSection.append(head);
+    // (убрали дублирующее "Здравствуйте, ...")
 
     if (!me) {
       const warn = document.createElement('div');
@@ -106,11 +104,9 @@ export async function renderDashboard(user) {
       return;
     }
 
-    // Личные баллы
-    const personalWeekPoints  = Number(me.week  || 0);
+    const personalWeekPoints  = Number(me.week || 0);
     const personalMonthPoints = Number(me.month || 0);
 
-    // Нормируем проценты для личных баров (по рассчитанному максимуму на пользователя)
     const employeesCount  = Number(deptData?.employeesCount || 1);
     const maxWeekDept     = Number(deptData?.maxWeek || 0);
     const perUserMaxWeek  = (maxWeekDept / (employeesCount || 1)) || 1;
@@ -119,26 +115,26 @@ export async function renderDashboard(user) {
 
     const personalWeekPercent  = Math.min(100, Math.round((personalWeekPoints  / perUserMaxWeek)  * 100));
     const personalMonthPercent = Math.min(100, Math.round((personalMonthPoints / perUserMaxMonth) * 100));
+    const deptMonthPoints100   = Math.min(100, Math.round(Number(deptData?.monthPercent || 0))); // трактуем как баллы 0..100
 
-    // 1) «Прогресс отдела — месяц»: ширина и иконка по БАЛЛАМ (0..100)
+    // 1) Прогресс отдела — месяц
     const deptBlock = document.createElement('div');
     const h4d = document.createElement('h4');
     h4d.textContent = 'Прогресс отдела — месяц (текущий)';
-    const deptMonthPoints = Number(deptData?.monthSum || 0);
-
     deptBlock.append(
       h4d,
-      createProgressBar(deptData?.monthPercent ?? 0, {
-        size: 'department',
+      // ширина — баллы 0..100, иконка — по баллам, на полосе показываем общие баллы отдела за месяц
+      createProgressBar(deptMonthPoints100, {
         widthMode: 'points100',
-        widthPoints: deptMonthPoints,
+        widthPoints: deptMonthPoints100,
         iconMode: 'points',
-        iconValue: deptMonthPoints
+        iconValue: deptMonthPoints100,
+        pointsLabel: Number(deptData?.monthSum ?? 0)
       })
     );
     employeeSection.append(deptBlock);
 
-    // 2) Личные бары:
+    // 2) Личные прогрессы
     const grid = document.createElement('div');
     grid.className = 'row g-4';
 
@@ -147,10 +143,10 @@ export async function renderDashboard(user) {
     colWeek.append(
       h4w,
       createProgressBar(personalWeekPercent, {
-        size: 'user',
-        widthMode: 'percent',     // ширина — по проценту
-        iconMode: 'points',       // иконка — по личным баллам
-        iconValue: personalWeekPoints
+        widthMode: 'percent',
+        iconMode: 'points',
+        iconValue: personalWeekPoints,
+        pointsLabel: personalWeekPoints
       })
     );
 
@@ -159,16 +155,17 @@ export async function renderDashboard(user) {
     colMonth.append(
       h4m,
       createProgressBar(personalMonthPercent, {
-        size: 'user',
         widthMode: 'percent',
         iconMode: 'points',
-        iconValue: personalMonthPoints // <-- исправлено: было personalMontsPoints
+        iconValue: personalMonthPoints,
+        pointsLabel: personalMonthPoints
       })
     );
 
     grid.append(colWeek, colMonth);
     employeeSection.append(grid);
   }
+
 
   async function refreshDashboardData() {
     // Один вызов вместо трёх
@@ -191,15 +188,15 @@ export async function renderDashboard(user) {
       deptSection.innerHTML = '';
       const deptTitle = document.createElement('h3');
       deptTitle.textContent = 'Прогресс отдела (месяц)';
-      const deptMonthPoints = Number(deptData?.monthSum || 0);
+      const deptMonthPoints100 = Math.min(100, Math.round(Number(deptData?.monthPercent || 0)));
       deptSection.append(
         deptTitle,
-        createProgressBar(deptData?.monthPercent ?? 0, {
-          size: 'department',
+        createProgressBar(deptMonthPoints100, {
           widthMode: 'points100',
-          widthPoints: deptMonthPoints,
+          widthPoints: deptMonthPoints100,
           iconMode: 'points',
-          iconValue: deptMonthPoints
+          iconValue: deptMonthPoints100,
+          pointsLabel:Number(deptData?.monthSum ?? 0)
         })
       );
     }

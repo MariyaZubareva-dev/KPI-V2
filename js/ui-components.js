@@ -13,17 +13,25 @@ export function createLoader(text = 'Загружаем данные…') {
 
 /**
  * Прогресс-бар с персонажем и подписью.
- * По умолчанию ширина трактуется как проценты (0..100).
- * Для работы в «баллах» (0..100 баллов == 0..100% ширины) используй:
- *   createProgressBar(value, { widthMode: 'points100', widthPoints: <0..100>, iconMode: 'points', iconValue: <0..100> })
  *
- * @param {number} value - если widthMode='percent' это проценты (0..100), иначе игнорируется
+ * По умолчанию value трактуется как проценты (0..100).
+ * Для работы в «баллах 0..100»:
+ *   createProgressBar(value, {
+ *     widthMode: 'points100',
+ *     widthPoints: <0..100>,
+ *     iconMode: 'points',
+ *     iconValue: <0..100>,
+ *     pointsLabel: <число-на-полосе>
+ *   })
+ *
+ * @param {number} value
  * @param {{
  *   size?: 'department'|'user',
- *   widthMode?: 'percent'|'points100', // чем задаём ширину бара
- *   widthPoints?: number,              // баллы 0..100 для ширины, если points100
- *   iconMode?: 'percent'|'points',     // чем выбираем иконку/подпись
- *   iconValue?: number                 // значение для иконки/подписи (проценты или баллы)
+ *   widthMode?: 'percent'|'points100',
+ *   widthPoints?: number,
+ *   iconMode?: 'percent'|'points',
+ *   iconValue?: number,
+ *   pointsLabel?: number | string   // что вывести на закрашенной части
  * }} opts
  */
 export function createProgressBar(value, opts = {}) {
@@ -32,22 +40,23 @@ export function createProgressBar(value, opts = {}) {
     widthMode = 'percent',
     widthPoints,
     iconMode = 'percent',
-    iconValue
+    iconValue,
+    pointsLabel
   } = opts;
 
-  // 1) Ширина бара (в процентах) — из «баллов» или из процентов
+  // ширина в %
   const widthPercent = widthMode === 'points100'
-    ? clampPercent(Number(widthPoints ?? iconValue ?? 0)) // 0..100 баллов == 0..100%
+    ? clampPercent(Number(widthPoints ?? iconValue ?? 0))
     : clampPercent(value);
 
-  // 2) Значение для выбора иконки и подписи
+  // метрика для иконки/подписи
   const iconMetric = Number(iconValue ?? (iconMode === 'percent' ? widthPercent : 0)) || 0;
 
-  // 3) Обёртка
+  // обёртка
   const wrapper = document.createElement('div');
   wrapper.classList.add(`progress-${size}`, 'mb-3');
 
-  // 4) Полоса прогресса
+  // полоса
   const bar = document.createElement('div');
   bar.classList.add('progress');
 
@@ -58,19 +67,45 @@ export function createProgressBar(value, opts = {}) {
   inner.setAttribute('aria-valuenow', String(widthPercent));
   inner.setAttribute('aria-valuemin', '0');
   inner.setAttribute('aria-valuemax', '100');
+  inner.style.position = 'relative'; // для бейджа баллов
 
-  // Цвет строго по ТЗ (порогам).
-  // Если работаем в модели "баллы", то берём цвет по баллам, иначе — по %.
+  // цвет по порогам
   inner.style.backgroundColor =
     (widthMode === 'points100')
       ? colorByPoints(Number(widthPoints ?? iconValue ?? 0))
       : colorByPercent(widthPercent);
 
+  // бейдж с числами баллов на закрашенной линии
+  if (pointsLabel !== undefined && pointsLabel !== null && pointsLabel !== '') {
+    const val = document.createElement('span');
+    val.className = 'progress-value';
+    val.textContent = String(pointsLabel);
+    val.style.position = 'absolute';
+    val.style.top = '50%';
+    val.style.transform = 'translateY(-50%)';
+    val.style.fontWeight = '700';
+    val.style.fontSize = '12px';
+    val.style.whiteSpace = 'nowrap';
+
+    if (widthPercent >= 12) {
+      // внутри закрашенной части
+      val.style.right = '6px';
+      val.style.color = '#fff';
+      val.style.textShadow = '0 1px 2px rgba(0,0,0,.25)';
+    } else {
+      // если заполнение маленькое — вынесем метку наружу
+      val.style.left = 'calc(100% + 8px)';
+      val.style.color = '#111';
+    }
+    inner.appendChild(val);
+  }
+
   bar.appendChild(inner);
 
-  // 5) Иконка + подпись, привязанные к треку ширины
+  // иконка + короткая подпись (строка)
   const charRow = document.createElement('div');
   charRow.classList.add('kpi-char-row');
+  charRow.style.marginBottom = '10px';
 
   const track = document.createElement('div');
   track.classList.add('kpi-char-track');
@@ -83,9 +118,16 @@ export function createProgressBar(value, opts = {}) {
   iconWrap.style.alignItems = 'center';
 
   const img = createCharacterImage({ mode: iconMode, value: iconMetric });
+
   const caption = document.createElement('div');
   caption.className = 'kpi-char-caption';
   caption.textContent = labelByScore(iconMode === 'points' ? iconMetric : percentToPoints(iconMetric));
+  caption.style.marginTop = '4px';
+  caption.style.fontSize = '12px';
+  caption.style.lineHeight = '1';
+  caption.style.color = '#6b7280';
+  caption.style.fontWeight = '500';
+  caption.style.whiteSpace = 'nowrap'; // одна строка
 
   iconWrap.append(img, caption);
   track.appendChild(iconWrap);
@@ -101,14 +143,8 @@ function clampPercent(v) {
   const n = Number(v) || 0;
   return Math.max(0, Math.min(100, n));
 }
+function percentToPoints(p) { return clampPercent(p); }
 
-// Если пришли проценты, а подпись должна быть по «баллам 0..100»,
-// можно считать, что проценты == баллы при шкале 0..100.
-function percentToPoints(p) {
-  return clampPercent(p);
-}
-
-// Подпись по баллам (строгое соответствие ТЗ)
 function labelByScore(points0to100) {
   const s = Number(points0to100) || 0;
   if (s >= 70) return 'Изобилие';
@@ -117,8 +153,6 @@ function labelByScore(points0to100) {
   return 'Старт сбора урожая';
 }
 
-// Цвета по ТЗ:
-// ≥70 — #36B37E, 50–69 — #9fc5e8, 30–49 — #ffd966, 0–29 — #FF0404
 function colorByPoints(points) {
   const p = Number(points) || 0;
   if (p >= 70) return '#36B37E';
@@ -134,17 +168,15 @@ function colorByPercent(percent) {
   return '#FF0404';
 }
 
-/** Выбор иконки по «баллам» (или по % — если очень нужно) */
 function createCharacterImage({ mode, value }) {
   const v = Number(value) || 0;
-  const usePoints = mode === 'points';
-  const metric = usePoints ? v : percentToPoints(v);
+  const metric = (mode === 'points') ? v : percentToPoints(v);
 
   let src = './images/krosh.png';
   if (metric >= 70)       src = './images/nyusha.png';
   else if (metric >= 50)  src = './images/karkarych-sovunya.png';
   else if (metric >= 30)  src = './images/kopatych.png';
-  else                    src = './images/krosh.png';
+  // 0–29 остаётся krosh
 
   const img = document.createElement('img');
   img.width = 64;
@@ -203,7 +235,7 @@ export function createUsersTable(users) {
   return table;
 }
 
-/** ТОП-3 лидеров (только баллы, без процентов) */
+/** ТОП-3 (только баллы) */
 export function createLeaderboard(users, period = 'week') {
   const safe = Array.isArray(users) ? users : [];
   const sorted = safe
