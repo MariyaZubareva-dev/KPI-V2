@@ -13,16 +13,28 @@ export function createLoader(text = 'Загружаем данные…') {
 
 /**
  * Прогресс-бар с персонажем.
- * @param {number} percent    - ширина бара в процентах (0..100)
+ * @param {number} value - если widthMode='percent' это проценты (0..100), иначе игнорируется
  * @param {{
  *   size?: 'department'|'user',
- *   iconMode?: 'percent'|'points', // по чему выбирать иконку
- *   iconValue?: number             // значение для выбора иконки (если points — это СЫРЫЕ баллы)
+ *   widthMode?: 'percent'|'points100', // чем задаём ширину бара
+ *   widthPoints?: number,              // баллы 0..100 для ширины, если points100
+ *   iconMode?: 'percent'|'points',     // чем выбираем иконку
+ *   iconValue?: number                 // значение для иконки (проценты или баллы)
  * }} opts
  */
-export function createProgressBar(percent, opts = {}) {
-  const p = clampPercent(percent);
-  const { size = 'department', iconMode = 'percent', iconValue } = opts;
+export function createProgressBar(value, opts = {}) {
+  const {
+    size = 'department',
+    widthMode = 'percent',
+    widthPoints,
+    iconMode = 'percent',
+    iconValue
+  } = opts;
+
+  // вычисляем ширину
+  const widthPercent = widthMode === 'points100'
+    ? clampPercent(Number(widthPoints ?? iconValue ?? 0)) // 0..100 баллов == 0..100%
+    : clampPercent(value);
 
   const wrapper = document.createElement('div');
   wrapper.classList.add(`progress-${size}`, 'mb-3');
@@ -32,12 +44,19 @@ export function createProgressBar(percent, opts = {}) {
   bar.classList.add('progress');
 
   const inner = document.createElement('div');
-  inner.classList.add('progress-bar', barClassByPercent(p));
+  inner.classList.add('progress-bar');
   inner.setAttribute('role', 'progressbar');
-  inner.style.width = `${p}%`;
-  inner.setAttribute('aria-valuenow', String(p));
+  inner.style.width = `${widthPercent}%`;
+  inner.setAttribute('aria-valuenow', String(widthPercent));
   inner.setAttribute('aria-valuemin', '0');
   inner.setAttribute('aria-valuemax', '100');
+
+  // цвет по порогам (по баллам, если widthMode='points100', иначе по процентам)
+  const color = (widthMode === 'points100')
+    ? colorByPoints(Number(widthPoints ?? iconValue ?? 0))
+    : colorByPercent(widthPercent);
+  inner.style.backgroundColor = color;
+
   bar.appendChild(inner);
 
   // character
@@ -46,12 +65,12 @@ export function createProgressBar(percent, opts = {}) {
 
   const track = document.createElement('div');
   track.classList.add('kpi-char-track');
-  track.style.width = `${p}%`;
+  track.style.width = `${widthPercent}%`;
   track.style.textAlign = 'right';
 
   const img = createCharacterImage({
     mode: iconMode,
-    value: iconMode === 'points' ? Number(iconValue || 0) : p
+    value: Number(iconValue ?? (iconMode === 'percent' ? widthPercent : 0))
   });
   track.appendChild(img);
   charRow.appendChild(track);
@@ -60,36 +79,46 @@ export function createProgressBar(percent, opts = {}) {
   return wrapper;
 }
 
+/* ---------- helpers ---------- */
+
 function clampPercent(v) {
   const n = Number(v) || 0;
   return Math.max(0, Math.min(100, n));
 }
 
-function barClassByPercent(p) {
-  if (p < 30) return 'bar-critical'; // красный
-  if (p < 50) return 'bar-30';       // 30–49
-  if (p < 70) return 'bar-50';       // 50–69
-  return 'bar-70';                   // ≥70
+// Цвета по ТЗ:
+// ≥70 — #36B37E, 50–69 — #9fc5e8, 30–49 — #ffd966, 0–29 — #FF0404
+function colorByPoints(points) {
+  const p = Number(points) || 0;
+  if (p >= 70) return '#36B37E';
+  if (p >= 50) return '#9fc5e8';
+  if (p >= 30) return '#ffd966';
+  return '#FF0404';
+}
+function colorByPercent(percent) {
+  const p = Number(percent) || 0;
+  if (p >= 70) return '#36B37E';
+  if (p >= 50) return '#9fc5e8';
+  if (p >= 30) return '#ffd966';
+  return '#FF0404';
 }
 
-/** Выбор иконки */
+/** Выбор иконки по баллам (или процентам, если нужно) */
 function createCharacterImage({ mode, value }) {
-  // value: если mode='percent' — проценты; если 'points' — сырые баллы
   let src = './images/krosh.png';
   let title = 'Старт (0–29)';
 
-  if (mode === 'points') {
-    // Пороги по баллам: 0–29 / 30–49 / 50–69 / ≥70
-    if (value >= 70) { src = './images/nyusha.png';            title = 'Изобилие (≥70)'; }
-    else if (value >= 50) { src = './images/karkarych-sovunya.png'; title = 'Минимум, чтобы выжить (50–69)'; }
-    else if (value >= 30) { src = './images/kopatych.png';     title = 'Зима впроголодь (30–49)'; }
-    else { src = './images/krosh.png';                         title = 'Старт (0–29)'; }
+  const v = Number(value) || 0;
+  const isPoints = mode === 'points';
+
+  if ((isPoints && v >= 70) || (!isPoints && v >= 70)) {
+    src = './images/nyusha.png'; title = isPoints ? 'Изобилие (≥70)' : 'Изобилие (≥70%)';
+  } else if ((isPoints && v >= 50) || (!isPoints && v >= 50)) {
+    src = './images/karkarych-sovunya.png'; title = isPoints ? 'Минимум, чтобы выжить (50–69)' : 'Минимум, чтобы выжить (50–69%)';
+  } else if ((isPoints && v >= 30) || (!isPoints && v >= 30)) {
+    src = './images/kopatych.png'; title = isPoints ? 'Зима впроголодь (30–49)' : 'Зима впроголодь (30–49%)';
   } else {
-    // Пороги по проценту
-    if (value >= 70) { src = './images/nyusha.png';            title = 'Изобилие (≥70%)'; }
-    else if (value >= 50) { src = './images/karkarych-sovunya.png'; title = 'Минимум, чтобы выжить (50–69%)'; }
-    else if (value >= 30) { src = './images/kopatych.png';     title = 'Зима впроголодь (30–49%)'; }
-    else { src = './images/krosh.png';                         title = 'Старт (0–29%)'; }
+    src = './images/krosh.png'; title = isPoints ? 'Старт (0–29)' : 'Старт (0–29%)';
   }
 
   const img = document.createElement('img');
@@ -104,10 +133,7 @@ function createCharacterImage({ mode, value }) {
   img.onerror = () => {
     const fallback = document.createElement('span');
     fallback.style.fontSize = '28px';
-    fallback.textContent = value >= (mode === 'points' ? 70 : 70) ? '👑'
-      : value >= (mode === 'points' ? 50 : 50) ? '🍵'
-      : value >= (mode === 'points' ? 30 : 30) ? '🥕'
-      : '🐰';
+    fallback.textContent = v >= 70 ? '👑' : v >= 50 ? '🍵' : v >= 30 ? '🥕' : '🐰';
     img.replaceWith(fallback);
   };
 
@@ -152,7 +178,7 @@ export function createUsersTable(users) {
   return table;
 }
 
-/** ТОП-3 лидеров без процентов */
+/** ТОП-3 лидеров (без процентов) */
 export function createLeaderboard(users, period = 'week') {
   const safe = Array.isArray(users) ? users : [];
   const sorted = safe
@@ -174,7 +200,7 @@ export function createLeaderboard(users, period = 'week') {
 
   sorted.forEach((u, i) => {
     const item = document.createElement('div');
-    item.innerHTML = `<strong>${i + 1}. ${u.name ?? '-'}</strong>  <span class="text-secondary">${u?.[period] ?? 0}</span>`;
+    item.innerHTML = `<strong>${i + 1}. ${u.name ?? '-'}</strong> <span class="text-secondary">${u?.[period] ?? 0}</span>`;
     container.appendChild(item);
   });
 

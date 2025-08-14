@@ -127,6 +127,8 @@ export async function renderDashboard(user) {
       h4d,
       createProgressBar(deptMonthPercent, {
         size: 'department',
+        widthMode: 'points100',
+        widthPoints: Number(deptData?.monthSum || 0),
         iconMode: 'points',
         iconValue: Number(deptData?.monthSum || 0)
       })
@@ -200,6 +202,8 @@ export async function renderDashboard(user) {
         deptTitle,
         createProgressBar(Number(deptData?.monthPercent ?? 0), {
           size: 'department',
+          widthMode: 'points100',
+          widthPoints: Number(deptData?.monthSum || 0),
           iconMode: 'points',
           iconValue: Number(deptData?.monthSum || 0)
         })
