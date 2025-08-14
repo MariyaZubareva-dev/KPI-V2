@@ -1,5 +1,5 @@
 // js/dashboard.js
-import { getProgress as apiGetProgress, logEvent, bootstrap as apiBootstrap } from './api.js';
+import { logEvent, bootstrap as apiBootstrap } from './api.js';
 import {
   createProgressBar,
   createUsersTable,
@@ -79,7 +79,7 @@ export async function renderDashboard(user) {
   function buildLeaderWeekHeader() {
     const wrap = document.createElement('div');
     const h4 = document.createElement('h4'); h4.textContent = 'ТОП-3 за неделю';
-    const sub = document.createElement('div'); sub.className = 'text-terтиary caption mt-1';
+    const sub = document.createElement('div'); sub.className = 'text-body-secondary small mt-1';
     const { start, end } = getLastFullWeekBounds();
     sub.textContent = `за прошлую неделю (Пн ${fmtDDMM(start)} — Вс ${fmtDDMM(end)})`;
     wrap.append(h4, sub);
