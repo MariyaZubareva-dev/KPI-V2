@@ -12,30 +12,35 @@ export function createLoader(text = 'Загружаем данные…') {
 }
 
 /**
- * Прогресс-бар с иконкой-персонажем
- * percent — ширина бара
- * opts.iconMode: 'percent' | 'points' — по чему выбирать картинку
- * opts.valueForIcon: число, если iconMode = 'points' (например, monthSum)
+ * Прогресс-бар с персонажем.
+ * @param {number} percent    - ширина бара в процентах (0..100)
+ * @param {{
+ *   size?: 'department'|'user',
+ *   iconMode?: 'percent'|'points', // по чему выбирать иконку
+ *   iconValue?: number             // значение для выбора иконки (если points — это СЫРЫЕ баллы)
+ * }} opts
  */
-export function createProgressBar(percent, size = 'department', opts = {}) {
-  const p = Math.max(0, Math.min(100, Number(percent) || 0));
-  const { iconMode = 'percent', valueForIcon = null } = opts;
+export function createProgressBar(percent, opts = {}) {
+  const p = clampPercent(percent);
+  const { size = 'department', iconMode = 'percent', iconValue } = opts;
 
   const wrapper = document.createElement('div');
   wrapper.classList.add(`progress-${size}`, 'mb-3');
 
+  // bar
   const bar = document.createElement('div');
   bar.classList.add('progress');
 
-  const barInner = document.createElement('div');
-  barInner.classList.add('progress-bar', barClassByPercent(p));
-  barInner.setAttribute('role', 'progressbar');
-  barInner.style.width = `${p}%`;
-  barInner.setAttribute('aria-valuenow', String(p));
-  barInner.setAttribute('aria-valuemin', '0');
-  barInner.setAttribute('aria-valuemax', '100');
-  bar.appendChild(barInner);
+  const inner = document.createElement('div');
+  inner.classList.add('progress-bar', barClassByPercent(p));
+  inner.setAttribute('role', 'progressbar');
+  inner.style.width = `${p}%`;
+  inner.setAttribute('aria-valuenow', String(p));
+  inner.setAttribute('aria-valuemin', '0');
+  inner.setAttribute('aria-valuemax', '100');
+  bar.appendChild(inner);
 
+  // character
   const charRow = document.createElement('div');
   charRow.classList.add('kpi-char-row');
 
@@ -44,10 +49,10 @@ export function createProgressBar(percent, size = 'department', opts = {}) {
   track.style.width = `${p}%`;
   track.style.textAlign = 'right';
 
-  const img = (iconMode === 'points' && typeof valueForIcon === 'number')
-    ? createCharacterImageByPoints(valueForIcon)
-    : createCharacterImageByPercent(p);
-
+  const img = createCharacterImage({
+    mode: iconMode,
+    value: iconMode === 'points' ? Number(iconValue || 0) : p
+  });
   track.appendChild(img);
   charRow.appendChild(track);
 
@@ -55,43 +60,38 @@ export function createProgressBar(percent, size = 'department', opts = {}) {
   return wrapper;
 }
 
+function clampPercent(v) {
+  const n = Number(v) || 0;
+  return Math.max(0, Math.min(100, n));
+}
+
 function barClassByPercent(p) {
-  if (p < 30) return 'bar-critical';
-  if (p < 50) return 'bar-30';
-  if (p < 70) return 'bar-50';
-  return 'bar-70';
+  if (p < 30) return 'bar-critical'; // красный
+  if (p < 50) return 'bar-30';       // 30–49
+  if (p < 70) return 'bar-50';       // 50–69
+  return 'bar-70';                   // ≥70
 }
 
-/** Картинка по проценту (для личных прогрессов и т.п.) */
-function createCharacterImageByPercent(percent) {
-  return buildImage(
-    percent < 30 ? './images/krosh.png'
-  : percent < 50 ? './images/kopatych.png'
-  : percent < 70 ? './images/karkarych-sовunya.png'
-                 : './images/nyusha.png',
-    percent < 30 ? 'Старт (0–29%)'
-  : percent < 50 ? '≥30% от цели'
-  : percent < 70 ? '≥50% от цели'
-                 : '≥70% от цели'
-  );
-}
+/** Выбор иконки */
+function createCharacterImage({ mode, value }) {
+  // value: если mode='percent' — проценты; если 'points' — сырые баллы
+  let src = './images/krosh.png';
+  let title = 'Старт (0–29)';
 
-/** Картинка по абсолютным баллам (для «Прогресс отдела (месяц)») */
-function createCharacterImageByPoints(points) {
-  const v = Number(points) || 0;
-  return buildImage(
-    v < 30 ? './images/krosh.png'
-  : v < 50 ? './images/kopatych.png'
-  : v < 70 ? './images/karkarych-sовunya.png'
-           : './images/nyusha.png',
-    v < 30 ? '0–29 баллов'
-  : v < 50 ? '30–49 баллов'
-  : v < 70 ? '50–69 баллов'
-           : '70+ баллов'
-  );
-}
+  if (mode === 'points') {
+    // Пороги по баллам: 0–29 / 30–49 / 50–69 / ≥70
+    if (value >= 70) { src = './images/nyusha.png';            title = 'Изобилие (≥70)'; }
+    else if (value >= 50) { src = './images/karkarych-sovunya.png'; title = 'Минимум, чтобы выжить (50–69)'; }
+    else if (value >= 30) { src = './images/kopatych.png';     title = 'Зима впроголодь (30–49)'; }
+    else { src = './images/krosh.png';                         title = 'Старт (0–29)'; }
+  } else {
+    // Пороги по проценту
+    if (value >= 70) { src = './images/nyusha.png';            title = 'Изобилие (≥70%)'; }
+    else if (value >= 50) { src = './images/karkarych-sovunya.png'; title = 'Минимум, чтобы выжить (50–69%)'; }
+    else if (value >= 30) { src = './images/kopatych.png';     title = 'Зима впроголодь (30–49%)'; }
+    else { src = './images/krosh.png';                         title = 'Старт (0–29%)'; }
+  }
 
-function buildImage(src, title) {
   const img = document.createElement('img');
   img.width = 64;
   img.height = 64;
@@ -104,19 +104,20 @@ function buildImage(src, title) {
   img.onerror = () => {
     const fallback = document.createElement('span');
     fallback.style.fontSize = '28px';
-    if (/0–29|0-29|0–29%/.test(title))       fallback.textContent = '🐰';
-    else if (/30–49|30-49/.test(title))      fallback.textContent = '🥕';
-    else if (/50–69|50-69/.test(title))      fallback.textContent = '🍵';
-    else                                     fallback.textContent = '👑';
+    fallback.textContent = value >= (mode === 'points' ? 70 : 70) ? '👑'
+      : value >= (mode === 'points' ? 50 : 50) ? '🍵'
+      : value >= (mode === 'points' ? 30 : 30) ? '🥕'
+      : '🐰';
     img.replaceWith(fallback);
   };
+
   return img;
 }
 
 /** Таблица сотрудников */
 export function createUsersTable(users) {
   const safe = Array.isArray(users) ? users : [];
-  if (safe.length === 0) {
+  if (!safe.length) {
     const info = document.createElement('div');
     info.className = 'text-secondary my-2';
     info.textContent = 'Нет сотрудников с ролью employee или нет данных.';
@@ -151,38 +152,13 @@ export function createUsersTable(users) {
   return table;
 }
 
-/* ---------- BADGES (оставляем, если нужны) ---------- */
-export const BADGE_THRESHOLDS = [
-  { pct: 100, icon: '🏆', title: '100% цели' },
-  { pct: 75,  icon: '🥇', title: '75%+ цели' },
-  { pct: 50,  icon: '🥈', title: '50%+ цели' },
-  { pct: 25,  icon: '🥉', title: '25%+ цели' },
-];
-export function badgeForPercent(pct) {
-  for (const b of BADGE_THRESHOLDS) if (pct >= b.pct) return b;
-  return null;
-}
-export function renderBadge(pct) {
-  const b = badgeForPercent(pct);
-  if (!b) return null;
-  const span = document.createElement('span');
-  span.className = 'badge-icon';
-  span.textContent = b.icon;
-  span.title = b.title;
-  return span;
-}
-
-/** ТОП-3 лидеров: убрали проценты, оставили только баллы (бейджи — опционально) */
-export function createLeaderboard(employees, mode = 'week', perUserMax = 1) {
-  const safe = Array.isArray(employees) ? employees : [];
+/** ТОП-3 лидеров без процентов */
+export function createLeaderboard(users, period = 'week') {
+  const safe = Array.isArray(users) ? users : [];
   const sorted = safe
     .slice()
-    .sort((a, b) => {
-      const av = mode === 'week' ? Number(a.week || 0) : Number(a.month || 0);
-      const bv = mode === 'week' ? Number(b.week || 0) : Number(b.month || 0);
-      return bv - av;
-    })
-    .filter(u => (mode === 'week' ? Number(u.week||0) : Number(u.month||0)) > 0)
+    .sort((a, b) => (b?.[period] ?? 0) - (a?.[period] ?? 0))
+    .filter(u => (u?.[period] ?? 0) > 0)
     .slice(0, 3);
 
   const container = document.createElement('div');
@@ -197,24 +173,9 @@ export function createLeaderboard(employees, mode = 'week', perUserMax = 1) {
   }
 
   sorted.forEach((u, i) => {
-    const points = mode === 'week' ? Number(u.week || 0) : Number(u.month || 0);
-    const pct = perUserMax ? Math.round(points / perUserMax * 100) : 0; // для бейджа
-    const badge = renderBadge(pct);
-
-    const row = document.createElement('div');
-    row.className = 'd-flex align-items-center gap-2 my-1';
-
-    const name = document.createElement('div');
-    name.className = 'fw-bold';
-    name.textContent = `${i + 1}. ${u.name ?? '-'}`;
-
-    const meta = document.createElement('div');
-    meta.className = 'text-secondary';
-    meta.textContent = `${points}`; // ← проценты убраны
-
-    row.append(name, meta);
-    if (badge) row.append(badge); // можно убрать, если не нужны
-    container.appendChild(row);
+    const item = document.createElement('div');
+    item.innerHTML = `<strong>${i + 1}. ${u.name ?? '-'}</strong>  <span class="text-secondary">${u?.[period] ?? 0}</span>`;
+    container.appendChild(item);
   });
 
   return container;

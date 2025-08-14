@@ -123,7 +123,14 @@ export async function renderDashboard(user) {
     const deptBlock = document.createElement('div');
     const h4d = document.createElement('h4');
     h4d.textContent = 'Прогресс отдела — месяц (текущий)';
-    deptBlock.append(h4d, createProgressBar(deptMonthPercent, 'department'));
+    deptBlock.append(
+      h4d,
+      createProgressBar(deptMonthPercent, {
+        size: 'department',
+        iconMode: 'points',
+        iconValue: Number(deptData?.monthSum || 0)
+      })
+    );
     employeeSection.append(deptBlock);
 
     // 2) Личные прогрессы
@@ -132,11 +139,25 @@ export async function renderDashboard(user) {
 
     const colWeek = document.createElement('div'); colWeek.className = 'col-12 col-md-6';
     const h4w = document.createElement('h4'); h4w.textContent = 'Ваш прогресс — неделя (текущая)';
-    colWeek.append(h4w, createProgressBar(personalWeekPercent, 'user'));
+    colWeek.append(
+      h4w,
+      createProgressBar(personalWeekPercent, {
+        size: 'user',
+        iconMode: 'points',
+        iconValue: Number(personalWeekPoints || 0)
+      })
+    );
 
     const colMonth = document.createElement('div'); colMonth.className = 'col-12 col-md-6';
     const h4m = document.createElement('h4'); h4m.textContent = 'Ваш прогресс — месяц (текущий)';
-    colMonth.append(h4m, createProgressBar(personalMonthPercent, 'user'));
+    colMonth.append(
+      h4m,
+      createProgressBar(personalMonthPercent, {
+        size: 'user',
+        iconMode: 'points',
+        iconValue: Number(personalMontsPoints || 0)
+      })
+    );
 
     grid.append(colWeek, colMonth);
     employeeSection.append(grid);
@@ -175,7 +196,14 @@ export async function renderDashboard(user) {
       deptSection.innerHTML = '';
       const deptTitle = document.createElement('h3');
       deptTitle.textContent = 'Прогресс отдела (месяц)';
-      deptSection.append(deptTitle, createProgressBar(Number(deptData?.monthPercent ?? 0), 'department'));
+      deptSection.append(
+        deptTitle,
+        createProgressBar(Number(deptData?.monthPercent ?? 0), {
+          size: 'department',
+          iconMode: 'points',
+          iconValue: Number(deptData?.monthSum || 0)
+        })
+      );
     }
 
     leaderWeekSec.innerHTML = '';
