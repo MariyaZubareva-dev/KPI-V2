@@ -565,7 +565,7 @@ async function handleProgressDelete(env: Env, url: URL) {
   await env.DB.prepare(`DELETE FROM progress WHERE rowid = ?`).bind(idStr).run();
   await logEvent(env, "progress_deleted", actorEmail, null, null, null, { id: idStr });
 
-  await purgeProgressCache(new URL(url.toString()));
+  await purgeProgressCache(url);
   return ok({ id: Number(idStr) });
 }
 
@@ -604,6 +604,7 @@ export default {
       }
 
       let res: Response;
+
       if (route === "/ping") {
         res = await handlePing();
       } else if (route === "/login") {
