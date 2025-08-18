@@ -46,7 +46,7 @@ export async function logout(email) {
 export async function getProgress(scope, userID) {
   const params = { scope };
   if (userID) params.userID = userID;
-  return httpGet('/getprogress', params); // ← строго нижний регистр
+  return httpGet('/getprogress', params); // backend в нижнем регистре
 }
 
 // KPI конкретного пользователя за текущую неделю
@@ -60,9 +60,8 @@ export async function getUsersAggregate(period = 'this_week') {
   return httpGet('/getprogress', { scope });
 }
 
-// Записать KPI (только админ)
+// Записать KPI (только админ). score вычисляется на бэке из веса KPI.
 export async function recordKPI({ userID, kpiId, score, date, actorEmail }) {
-  // backend вычисляет score сам из веса KPI, но поле не мешает
   return httpGet('/recordkpi', { userID, kpiId, score, date, actorEmail });
 }
 
@@ -82,4 +81,14 @@ export async function bootstrap() {
   const data = await httpGet('/bootstrap');
   if (data?.success === false) throw new Error(data?.message || 'bootstrap returned error');
   return data.data ?? data; // { dept, users, usersPrevWeek }
+}
+
+// Список отметок (история)
+export async function listProgress({ userID, from, to, limit = 50 }) {
+  return httpGet('/progress_list', { userID, from, to, limit });
+}
+
+// Удаление отметки (по rowid)
+export async function deleteProgress({ id, actorEmail }) {
+  return httpGet('/progress_delete', { id, actorEmail });
 }

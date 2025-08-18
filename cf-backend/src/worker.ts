@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
-// src/worker.ts
-// Cloudflare Worker + D1. Роуты: /getProgress, /login, /recordKPI, /log, /ping
+// Cloudflare Worker + D1.
+// Роуты: /getProgress, /login, /recordKPI, /log, /ping, /bootstrap, /progress_list, /progress_delete
 
 export interface Env {
   DB: D1Database;
@@ -28,12 +28,8 @@ function jsonResp(obj: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-function ok(data: unknown): Response {
-  return jsonResp({ success: true, data });
-}
-function err(message: string, status = 400): Response {
-  return jsonResp({ success: false, message }, { status });
-}
+function ok(data: unknown): Response { return jsonResp({ success: true, data }); }
+function err(message: string, status = 400): Response { return jsonResp({ success: false, message }, { status }); }
 
 function allowOrigin(env: Env): string {
   return env.CORS_ORIGIN && env.CORS_ORIGIN.trim() !== "" ? env.CORS_ORIGIN : "*";
@@ -128,7 +124,7 @@ async function cacheGet(env: Env, req: Request, compute: () => Promise<Response>
   return withCORS(env, cacheable);
 }
 
-// Удаление кэшированных агрегатов прогресса
+// Инвалидация кэша агрегатов
 async function purgeProgressCache(base: URL) {
   const cfCache = (globalThis as any)?.caches?.default as Cache | undefined;
   if (!cfCache) return;
@@ -311,9 +307,10 @@ async function handleGetUsersProgressLastWeek(env: Env) {
 
   return ok(data);
 }
+
 // === /bootstrap — единый батч
 async function handleBootstrap(env: Env, url: URL) {
-  // 1) department (как в handleGetDeptProgress)
+  // department
   const now = new Date();
   const { start, end } = getWeekBounds(now);
   const month = now.getMonth();
@@ -365,7 +362,7 @@ async function handleBootstrap(env: Env, url: URL) {
 
   const dept = { weekSum, monthSum, maxWeek, maxMonth, weeksInMonth, employeesCount, weekPercent, monthPercent };
 
-  // 2) users (this_week + month)
+  // users (this_week + month)
   const yearStr = String(now.getFullYear());
   const monthStr = `${now.getMonth() + 1}`.padStart(2, "0");
   const users = await all<{ id: number; name: string; email: string; role: string }>(
@@ -397,7 +394,7 @@ async function handleBootstrap(env: Env, url: URL) {
     week: weekMap.get(u.id) || 0, month: monthMap.get(u.id) || 0
   }));
 
-  // 3) usersPrevWeek (полная прошлая неделя)
+  // usersPrevWeek
   const { start: prevStart, end: prevEnd } = getLastFullWeekBounds(new Date());
   const prevRows = await all<{ user_id: number; sum: number }>(
     env.DB,
@@ -519,6 +516,59 @@ async function logEvent(
     .run();
 }
 
+// GET /progress_list?userID=&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=50
+async function handleProgressList(env: Env, url: URL) {
+  const userID = url.searchParams.get("userID");
+  const from   = url.searchParams.get("from"); // inclusive
+  const to     = url.searchParams.get("to");   // inclusive
+  const limit  = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") || 50)));
+
+  const conds: string[] = [];
+  const bind: any[] = [];
+
+  if (userID) { conds.push("p.user_id = ?"); bind.push(userID); }
+  if (from)   { conds.push("p.date >= ?");   bind.push(from); }
+  if (to)     { conds.push("p.date <= ?");   bind.push(to); }
+
+  const where = conds.length ? ("WHERE " + conds.join(" AND ")) : "";
+
+  const sql = `
+    SELECT p.rowid AS id, p.user_id, p.date, p.kpi_id, p.score,
+           k.name AS kpi_name, u.name AS user_name
+    FROM progress p
+    JOIN kpis   k ON k.id = p.kpi_id
+    JOIN users  u ON u.id = p.user_id
+    ${where}
+    ORDER BY p.date DESC, id DESC
+    LIMIT ${limit}
+  `;
+
+  const rows = await all<any>(env.DB, sql, bind);
+  return ok(rows);
+}
+
+// GET /progress_delete?id=&actorEmail=
+async function handleProgressDelete(env: Env, url: URL) {
+  const idStr      = url.searchParams.get("id");
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!idStr)      return err("id required");
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    await logEvent(env, "progress_delete_forbidden", actorEmail, null, null, null, { id: idStr });
+    return err("forbidden: only admin can delete progress", 403);
+  }
+
+  await env.DB.prepare(`DELETE FROM progress WHERE rowid = ?`).bind(idStr).run();
+  await logEvent(env, "progress_deleted", actorEmail, null, null, null, { id: idStr });
+
+  await purgeProgressCache(new URL(url.toString()));
+  return ok({ id: Number(idStr) });
+}
+
 /* =============== маршрутизация ================= */
 
 function pathRoute(url: URL): string {
@@ -543,7 +593,7 @@ export default {
       // Кэширующие маршруты (GET агрегаты)
       if (req.method === "GET" && (route === "/getprogress" || route === "/bootstrap")) {
         if (route === "/bootstrap") {
-            return cacheGet(env, req, () => handleBootstrap(env, url), DEFAULT_TTL);
+          return cacheGet(env, req, () => handleBootstrap(env, url), DEFAULT_TTL);
         }
         const scope = (url.searchParams.get("scope") || "department").toLowerCase();
         const cacheable = scope === "department" || scope === "users" || scope === "users_lastweek";
@@ -564,6 +614,10 @@ export default {
         res = await handleLog(env, url);
       } else if (route === "/bootstrap") {
         res = await handleBootstrap(env, url);
+      } else if (route === "/progress_list") {
+        res = await handleProgressList(env, url);
+      } else if (route === "/progress_delete") {
+        res = await handleProgressDelete(env, url);
       } else {
         res = err("Invalid action", 400);
       }
