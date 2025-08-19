@@ -199,3 +199,21 @@ a:hover, .link:hover{ text-decoration: underline; }
   font-weight: 500;
   white-space: nowrap;   /* ← чтобы не переносилась */
 }
+/* Отключаем любые авто-подписи у прогресс-баров */
+.progress .progress-bar::before,
+.progress .progress-bar::after,
+.progress::before,
+.progress::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Наше число на полосе */
+.kpi-bar-value {
+  position: relative;
+  z-index: 1;
+  white-space: nowrap;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
