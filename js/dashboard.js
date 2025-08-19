@@ -357,7 +357,7 @@ export async function renderDashboard(user) {
       try {
         const res = await apiLeaderboard({ from: fromInp.value, to: toInp.value, includeAll: false, });
         const rows = Array.isArray(res?.data) ? res.data
-                   : (Array.isArray(ress) ? res: []);
+                   : (Array.isArray(res) ? res: []);
         if (!rows.length) {
           tbl.innerHTML = `<div class="text-secondary">Нет данных за период.</div>`;
           return;
