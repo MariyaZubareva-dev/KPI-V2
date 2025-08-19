@@ -355,8 +355,10 @@ export async function renderDashboard(user) {
         </div>
       `;
       try {
-        const rows = await apiLeaderboard({ from: fromInp.value, to: toInp.value });
-        if (!Array.isArray(rows) || rows.length === 0) {
+        const res = await apiLeaderboard({ from: fromInp.value, to: toInp.value, includeAll: false, });
+        const rows = Array.isArray(res?.data) ? res.data
+                   : (Array.isArray(ress) ? res: []);
+        if (!rows.length) {
           tbl.innerHTML = `<div class="text-secondary">Нет данных за период.</div>`;
           return;
         }
