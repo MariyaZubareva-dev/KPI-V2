@@ -13,24 +13,7 @@ export function createLoader(text = 'Загружаем данные…') {
 
 /**
  * Прогресс-бар с персонажем и числом баллов на цветной полосе.
- *
- * По умолчанию value трактуется как проценты (0..100).
- * Для работы в «баллах 0..100» используйте:
- *   createProgressBar(0, {
- *     widthMode: 'points100',
- *     widthPoints: <0..100>,      // ширина бара (в баллах)
- *     iconMode: 'points',
- *     iconValue: <0..100>         // выбор иконки и цвет по баллам
- *   })
- *
- * @param {number} value - если widthMode='percent' это проценты (0..100), иначе игнорируется
- * @param {{
- *   size?: 'department'|'user',
- *   widthMode?: 'percent'|'points100',
- *   widthPoints?: number,
- *   iconMode?: 'percent'|'points',
- *   iconValue?: number
- * }} opts
+ * См. режимы points100/points в опциях.
  */
 export function createProgressBar(value, opts = {}) {
   const {
@@ -43,10 +26,10 @@ export function createProgressBar(value, opts = {}) {
 
   // Ширина бара в процентах
   const widthPercent = (widthMode === 'points100')
-    ? clampPercent(Number(widthPoints ?? iconValue ?? 0)) // 0..100 баллов == 0..100%
+    ? clampPercent(Number(widthPoints ?? iconValue ?? 0))
     : clampPercent(value);
 
-  // Баллы (для цвета, иконки и надписи)
+  // Баллы (для цвета, иконки и подписи)
   const points = Number(
     iconMode === 'points'
       ? (iconValue ?? widthPoints ?? 0)
@@ -63,21 +46,22 @@ export function createProgressBar(value, opts = {}) {
 
   const inner = document.createElement('div');
   inner.classList.add('progress-bar');
-  inner.setAttribute('role', 'progressbar');
   inner.style.width = `${widthPercent}%`;
-  inner.setAttribute('aria-valuenow', String(widthPercent));
-  inner.setAttribute('aria-valuemin', '0');
-  inner.setAttribute('aria-valuemax', '100');
 
-  // Цвет по балльным порогам
+  // Важно: НЕ ставим aria-valuenow/min/max — чтобы тема не рисовала второй лейбл через ::after
+  inner.setAttribute('role', 'progressbar');
+  inner.setAttribute('aria-label', `Прогресс: ${formatPoints(points)} балл(ов) из 100`);
+
+  // Цвет по порогам
   const bg = colorByPoints(points);
   inner.style.backgroundColor = bg;
 
-  // Число баллов поверх заливки (справа)
+  // Подпись (одна)
   inner.style.display = 'flex';
-  inner.style.justifyContent = 'flex-end'; // <- было justContent (опечатка)
+  inner.style.justifyContent = 'flex-end';
   inner.style.alignItems = 'center';
   inner.style.paddingRight = '8px';
+  inner.style.whiteSpace = 'nowrap';
 
   const valueLabel = document.createElement('span');
   valueLabel.className = 'kpi-bar-value';
@@ -118,7 +102,6 @@ function clampPercent(v) {
 }
 
 // Цвета по ТЗ:
-// ≥70 — #36B37E, 50–69 — #9fc5e8, 30–49 — #ffd966, 0–29 — #FF0404
 function colorByPoints(points) {
   const p = Number(points) || 0;
   if (p >= 70) return '#36B37E';
@@ -130,20 +113,17 @@ function colorByPoints(points) {
 // Контрастный цвет текста поверх фона
 function pickTextColor(bg) {
   const b = String(bg).toLowerCase();
-  // тёмные: зелёный/красный -> белый текст
   if (b === '#36b37e' || b === '#ff0404') return '#fff';
-  // светлые: жёлтый/голубой -> чёрный текст
   return '#000';
 }
 
-// Красиво форматируем 0.25/1/12.5 и т.п.
+// Формат "12", "12,5", "0,25"
 function formatPoints(p) {
   const n = Number(p) || 0;
   return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 }
 
 function percentToPoints(p) { return clampPercent(p); }
-
 function labelByScore(points0to100) {
   const s = Number(points0to100) || 0;
   if (s >= 70) return 'Изобилие';
@@ -161,7 +141,6 @@ function createCharacterImage({ mode, value }) {
   if (metric >= 70)       src = './images/nyusha.png';
   else if (metric >= 50)  src = './images/karkarych-sovunya.png';
   else if (metric >= 30)  src = './images/kopatych.png';
-  // 0–29 — krosh
 
   const img = document.createElement('img');
   img.width = 64;
