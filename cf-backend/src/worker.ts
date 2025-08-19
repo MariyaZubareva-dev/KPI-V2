@@ -525,24 +525,22 @@ async function handleProgressList(env: Env, url: URL) {
 
   const conds: string[] = [];
   const bind: any[] = [];
-
   if (userID) { conds.push("p.user_id = ?"); bind.push(userID); }
   if (from)   { conds.push("p.date >= ?");   bind.push(from); }
   if (to)     { conds.push("p.date <= ?");   bind.push(to); }
-
   const where = conds.length ? ("WHERE " + conds.join(" AND ")) : "";
 
   const sql = `
     SELECT p.rowid AS id, p.user_id, p.date, p.kpi_id, p.score,
-           k.name AS kpi_name, u.name AS user_name
+           COALESCE(k.name, 'KPI #' || p.kpi_id || ' (удалён)') AS kpi_name,
+           u.name AS user_name
     FROM progress p
-    JOIN kpis   k ON k.id = p.kpi_id
+    LEFT JOIN kpis   k ON k.id = p.kpi_id
     JOIN users  u ON u.id = p.user_id
     ${where}
     ORDER BY p.date DESC, id DESC
     LIMIT ${limit}
   `;
-
   const rows = await all<any>(env.DB, sql, bind);
   return ok(rows);
 }
@@ -568,6 +566,113 @@ async function handleProgressDelete(env: Env, url: URL) {
   await purgeProgressCache(url);
   return ok({ id: Number(idStr) });
 }
+// GET /kpi_list?include_inactive=1
+async function handleKpiList(env: Env, url: URL) {
+  const includeInactive = (url.searchParams.get("include_inactive") || "") === "1";
+  const sql = includeInactive
+    ? `SELECT id, name, weight, active FROM kpis ORDER BY active DESC, weight DESC, id ASC`
+    : `SELECT id, name, weight, active FROM kpis WHERE active=1 ORDER BY weight DESC, id ASC`;
+  const rows = await all<any>(env.DB, sql);
+  return ok(rows);
+}
+
+// GET /kpi_create?name=&weight=&actorEmail=
+async function handleKpiCreate(env: Env, url: URL) {
+  const name       = (url.searchParams.get("name") || "").trim();
+  const weightStr  = url.searchParams.get("weight") || "";
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+  if (!name)       return err("name required");
+  const weight = Number(weightStr);
+  if (!Number.isFinite(weight) || weight <= 0) return err("weight must be > 0");
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    await logEvent(env, "kpi_create_forbidden", actorEmail, null, null, null, { name, weight });
+    return err("forbidden: only admin can create KPI", 403);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO kpis (name, weight, active) VALUES (?, ?, 1)`
+  ).bind(name, weight).run();
+
+  const row = await one<{ id: number }>(env.DB, `SELECT last_insert_rowid() AS id`);
+  await logEvent(env, "kpi_created", actorEmail, null, row?.id ?? null, null, { name, weight });
+
+  await purgeProgressCache(new URL(url.toString()));
+  return ok({ id: row?.id, name, weight, active: 1 });
+}
+
+// GET /kpi_update?id=&name=&weight=&active=&actorEmail=
+async function handleKpiUpdate(env: Env, url: URL) {
+  const idStr      = url.searchParams.get("id");
+  const name       = url.searchParams.get("name");
+  const weightStr  = url.searchParams.get("weight");
+  const activeStr  = url.searchParams.get("active");
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+  if (!idStr)      return err("id required");
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    await logEvent(env, "kpi_update_forbidden", actorEmail, null, Number(idStr), null, { name, weightStr, activeStr });
+    return err("forbidden: only admin can update KPI", 403);
+  }
+
+  const sets: string[] = [];
+  const bind: any[] = [];
+
+  if (name !== null && name !== undefined) {
+    sets.push("name = ?"); bind.push(name.trim());
+  }
+  if (weightStr !== null && weightStr !== undefined) {
+    const w = Number(weightStr);
+    if (!Number.isFinite(w) || w <= 0) return err("weight must be > 0");
+    sets.push("weight = ?"); bind.push(w);
+  }
+  if (activeStr !== null && activeStr !== undefined) {
+    const a = /^(1|true)$/i.test(activeStr) ? 1 : 0;
+    sets.push("active = ?"); bind.push(a);
+  }
+
+  if (!sets.length) return err("nothing to update");
+
+  bind.push(Number(idStr));
+  const sql = `UPDATE kpis SET ${sets.join(", ")} WHERE id = ?`;
+  await env.DB.prepare(sql).bind(...bind).run();
+
+  await logEvent(env, "kpi_updated", actorEmail, null, Number(idStr), null, { name, weightStr, activeStr });
+  await purgeProgressCache(new URL(url.toString()));
+  return ok({ id: Number(idStr) });
+}
+
+// GET /kpi_delete?id=&actorEmail=   (мягкое удаление: active=0)
+async function handleKpiDelete(env: Env, url: URL) {
+  const idStr      = url.searchParams.get("id");
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+  if (!idStr)      return err("id required");
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    await logEvent(env, "kpi_delete_forbidden", actorEmail, null, Number(idStr), null, null);
+    return err("forbidden: only admin can delete KPI", 403);
+  }
+
+  await env.DB.prepare(`UPDATE kpis SET active=0 WHERE id=?`).bind(Number(idStr)).run();
+  await logEvent(env, "kpi_deleted_soft", actorEmail, null, Number(idStr), null, null);
+
+  await purgeProgressCache(new URL(url.toString()));
+  return ok({ id: Number(idStr), active: 0 });
+}
 
 /* =============== маршрутизация ================= */
 
@@ -580,17 +685,14 @@ function pathRoute(url: URL): string {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (isPreflight(req)) {
-      return withCORS(
-        env,
-        new Response(null, { status: 204, headers: { "Access-Control-Max-Age": "86400" } })
-      );
+      return withCORS(env, new Response(null, { status: 204, headers: { "Access-Control-Max-Age": "86400" } }));
     }
 
     const url = new URL(req.url);
     const route = pathRoute(url);
 
     try {
-      // Кэширующие маршруты (GET агрегаты)
+      // Кэширующие маршруты
       if (req.method === "GET" && (route === "/getprogress" || route === "/bootstrap")) {
         if (route === "/bootstrap") {
           return cacheGet(env, req, () => handleBootstrap(env, url), DEFAULT_TTL);
@@ -604,7 +706,6 @@ export default {
       }
 
       let res: Response;
-
       if (route === "/ping") {
         res = await handlePing();
       } else if (route === "/login") {
@@ -619,6 +720,14 @@ export default {
         res = await handleProgressList(env, url);
       } else if (route === "/progress_delete") {
         res = await handleProgressDelete(env, url);
+      } else if (route === "/kpi_list") {
+        res = await handleKpiList(env, url);
+      } else if (route === "/kpi_create") {
+        res = await handleKpiCreate(env, url);
+      } else if (route === "/kpi_update") {
+        res = await handleKpiUpdate(env, url);
+      } else if (route === "/kpi_delete") {
+        res = await handleKpiDelete(env, url);
       } else {
         res = err("Invalid action", 400);
       }
@@ -630,3 +739,4 @@ export default {
     }
   },
 };
+
