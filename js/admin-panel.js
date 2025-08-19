@@ -1,5 +1,15 @@
 // js/admin-panel.js
-import { getProgress, recordKPI, logEvent, listProgress, deleteProgress } from './api.js';
+import {
+  getProgress,
+  recordKPI,
+  logEvent,
+  listProgress,
+  deleteProgress,
+  kpiList,
+  kpiCreate,
+  kpiUpdate,
+  kpiDelete
+} from './api.js';
 
 /**
  * Admin-панель (отметка KPI, история, CRUD задач)
@@ -150,7 +160,7 @@ export function createAdminPanel(usersData = []) {
   const kpiCrudList  = kpiCrudCard.querySelector('#kpi-crud-list');
   const kpiNewName   = kpiCrudCard.querySelector('#kpi-new-name');
   const kpiNewWeight = kpiCrudCard.querySelector('#kpi-new-weight');
-  const kpiAddBtn    = kpiCrudCard.querySelector('#kpi-new-add');
+  const kpiAddBtn    = kpiCrudCard.querySelector('#kpi-new-add'); // ← ОДНО объявление
 
   // === Вспомогательные ===
   function getActorEmail() {
@@ -201,7 +211,6 @@ export function createAdminPanel(usersData = []) {
         nm.innerHTML = `<strong>${kpi.name}</strong>`;
         const sub = document.createElement('div');
         sub.className = 'text-secondary small';
-        // показываем статус текущей недели (информативно), но НЕ блокируем повторную отметку
         sub.textContent = `Баллы: ${kpi.weight} ${kpi.done ? ' • уже отмечено на этой неделе' : ''}`;
         left.append(nm, sub);
 
@@ -366,8 +375,7 @@ export function createAdminPanel(usersData = []) {
       </div>
     `;
     try {
-      const resp = await kpiList({ includeInactive: true });
-      const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+      const rows = await kpiList({ includeInactive: true });
       container.innerHTML = '';
 
       if (!rows.length) {
@@ -495,7 +503,6 @@ export function createAdminPanel(usersData = []) {
   userSel.addEventListener('change', refreshAll);
   refreshBtn.addEventListener('click', refreshAll);
   dateInp.addEventListener('change', () => {
-    // просто перерисуем список KPI, чтобы обновить «дата: …» в строках
     renderKpiListFor(userSel.value);
   });
 
@@ -506,6 +513,7 @@ export function createAdminPanel(usersData = []) {
     renderHistoryFor(userSel.value);
   });
 
+  // обработчик создания KPI (без повторного const!)
   kpiAddBtn.addEventListener('click', async () => {
     const name = String(kpiNewName.value || '').trim();
     const weight = Number(kpiNewWeight.value);

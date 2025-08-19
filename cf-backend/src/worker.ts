@@ -1,7 +1,9 @@
 /// <reference types="@cloudflare/workers-types" />
 
 // Cloudflare Worker + D1.
-// Роуты: /ping, /login, /getprogress, /recordkpi, /log, /bootstrap, /leaderboard, /progress_list, /progress_delete
+// Роуты: /ping, /login, /getprogress, /recordkpi, /log, /bootstrap,
+//        /leaderboard, /progress_list, /progress_delete,
+//        /kpi_list, /kpi_create, /kpi_update, /kpi_delete
 
 export interface Env {
   DB: D1Database;
@@ -425,9 +427,9 @@ async function handleGetUserKPIs(env: Env, url: URL) {
 
   const { start, end } = getWeekBounds(new Date());
 
-  const kpis = await all<{ id: number; name: string; weight: number; category: string }>(
+  const kpis = await all<{ id: number; name: string; weight: number; category: string; active: number }>(
     env.DB,
-    `SELECT id, name, weight, category FROM kpis WHERE active=1 ORDER BY weight DESC, id ASC`
+    `SELECT id, name, weight, category, active FROM kpis WHERE active=1 ORDER BY weight DESC, id ASC`
   );
 
   const doneRows = await all<{ kpi_id: number }>(
@@ -520,6 +522,8 @@ async function logEvent(
     .run();
 }
 
+/* ---------- История отметок ---------- */
+
 // GET /progress_list?userID=&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=50
 async function handleProgressList(env: Env, url: URL) {
   const userID = url.searchParams.get("userID");
@@ -576,6 +580,8 @@ async function handleProgressDelete(env: Env, url: URL) {
   return ok({ id: Number(idStr) });
 }
 
+/* ---------- Лидерборд ---------- */
+
 // GET /leaderboard?from=YYYY-MM-DD&to=YYYY-MM-DD&include_all=0|1
 async function handleLeaderboard(env: Env, url: URL) {
   const from = url.searchParams.get("from");
@@ -614,6 +620,92 @@ async function handleLeaderboard(env: Env, url: URL) {
     }));
 
   return ok(data);
+}
+
+/* ---------- KPI CRUD ---------- */
+
+// GET /kpi_list?include_inactive=0|1
+async function handleKpiList(env: Env, url: URL) {
+  const includeInactive = (url.searchParams.get("include_inactive") || "0") === "1";
+  const rows = await all<{ id:number; name:string; weight:number; active:number }>(
+    env.DB,
+    `SELECT id, name, weight, active
+     FROM kpis
+     ${includeInactive ? "" : "WHERE active=1"}
+     ORDER BY active DESC, weight DESC, id ASC`
+  );
+  return ok(rows.map(r => ({ ...r, weight: Number(r.weight || 0), active: Number(r.active||0) })));
+}
+
+// GET /kpi_create?name=&weight=&actorEmail=
+async function handleKpiCreate(env: Env, url: URL) {
+  const name = (url.searchParams.get("name") || "").trim();
+  const weight = Number(url.searchParams.get("weight") || "0");
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!name || !(weight > 0)) return err("name and weight>0 required");
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    return err("forbidden: only admin can create KPI", 403);
+  }
+
+  await env.DB.prepare(`INSERT INTO kpis (name, weight, active) VALUES (?, ?, 1)`)
+    .bind(name, weight).run();
+  await logEvent(env, "kpi_created", actorEmail, null, null, weight, { name });
+
+  // изменить веса => инвалидация агрегатов
+  await purgeProgressCache(url);
+  return ok({ name, weight });
+}
+
+// GET /kpi_update?id=&name=&weight=&active=&actorEmail=
+async function handleKpiUpdate(env: Env, url: URL) {
+  const id = Number(url.searchParams.get("id") || "0");
+  const name = (url.searchParams.get("name") || "").trim();
+  const weight = Number(url.searchParams.get("weight") || "0");
+  const active = (url.searchParams.get("active") || "1") === "1" ? 1 : 0;
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!(id>0) || !name || !(weight>0)) return err("id, name and weight>0 required");
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    return err("forbidden: only admin can update KPI", 403);
+  }
+
+  await env.DB.prepare(`UPDATE kpis SET name=?, weight=?, active=? WHERE id=?`)
+    .bind(name, weight, active, id).run();
+  await logEvent(env, "kpi_updated", actorEmail, null, id, weight, { name, active });
+
+  await purgeProgressCache(url);
+  return ok({ id, name, weight, active });
+}
+
+// GET /kpi_delete?id=&actorEmail=
+async function handleKpiDelete(env: Env, url: URL) {
+  const id = Number(url.searchParams.get("id") || "0");
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!(id>0)) return err("id required");
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    return err("forbidden: only admin can delete KPI", 403);
+  }
+
+  // мягкое удаление
+  await env.DB.prepare(`UPDATE kpis SET active=0 WHERE id=?`).bind(id).run();
+  await logEvent(env, "kpi_deleted", actorEmail, null, id, null, null);
+
+  await purgeProgressCache(url);
+  return ok({ id, active: 0 });
 }
 
 /* =============== маршрутизация ================= */
@@ -667,6 +759,14 @@ export default {
         res = await handleProgressDelete(env, url);
       } else if (route === "/leaderboard") {
         res = await handleLeaderboard(env, url);
+      } else if (route === "/kpi_list") {
+        res = await handleKpiList(env, url);
+      } else if (route === "/kpi_create") {
+        res = await handleKpiCreate(env, url);
+      } else if (route === "/kpi_update") {
+        res = await handleKpiUpdate(env, url);
+      } else if (route === "/kpi_delete") {
+        res = await handleKpiDelete(env, url);
       } else {
         res = err("Invalid action", 400);
       }

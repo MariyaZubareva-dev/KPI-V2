@@ -84,6 +84,36 @@ export async function renderDashboard(user) {
     wrap.append(h4, sub);
     return wrap;
   }
+  function formatPoints(n) {
+    const num = Number(n || 0);
+    return (Math.round(num * 100) / 100).toString().replace(/\.00$/, '');
+  }
+  function labelTextColorByPoints(points) {
+    const p = Number(points) || 0;
+    // Фон: ≥70 — зелёный; 50–69 — голубой; 30–49 — жёлтый; 0–29 — красный
+    // Контраст: для зелёного/красного — белый; для голубого/жёлтого — чёрный
+    if (p >= 70) return '#fff';
+    if (p >= 50) return '#111';
+    if (p >= 30) return '#111';
+    return '#fff';
+  }
+  function addBarLabel(barEl, points) {
+    const inner = barEl?.querySelector?.('.progress-bar');
+    if (!inner) return;
+    inner.style.position = 'relative';
+    const label = document.createElement('span');
+    label.textContent = formatPoints(points);
+    label.className = 'kpi-bar-label';
+    label.style.position = 'absolute';
+    label.style.right = '8px';
+    label.style.top = '50%';
+    label.style.transform = 'translateY(-50%)';
+    label.style.fontWeight = '700';
+    label.style.fontSize = '14px';
+    label.style.pointerEvents = 'none';
+    label.style.color = labelTextColorByPoints(points);
+    inner.appendChild(label);
+  }
 
   function renderEmployeePanel({ deptData, usersArr }) {
     if (role !== 'employee') return;
@@ -104,18 +134,10 @@ export async function renderDashboard(user) {
 
     const personalWeekPoints  = Number(me.week || 0);
     const personalMonthPoints = Number(me.month || 0);
+    const deptMonthPoints     = Number(deptData?.monthSum || 0);
 
-    const employeesCount  = Number(deptData?.employeesCount || 1);
-    const maxWeekDept     = Number(deptData?.maxWeek || 0);
-    const perUserMaxWeek  = (maxWeekDept / (employeesCount || 1)) || 1;
-    const weeksInMonth    = Number(deptData?.weeksInMonth || 4);
-    const perUserMaxMonth = perUserMaxWeek * weeksInMonth || 1;
-
-    const deptMonthPoints = Number(deptData?.monthSum || 0); // выводим числом
-
-    // 1) Прогресс отдела — месяц (считаем ширину по шкале 0..100, цвет и иконка — по баллам)
+    // 1) Прогресс отдела — месяц
     {
-      deptSection.innerHTML = '';
       const h = document.createElement('h3'); h.textContent = 'Прогресс отдела (месяц)';
       const bar = createProgressBar(0, {
         size: 'department',
@@ -124,15 +146,17 @@ export async function renderDashboard(user) {
         iconMode: 'points',
         iconValue: deptMonthPoints
       });
+      addBarLabel(bar, deptMonthPoints);
+      deptSection.innerHTML = '';
       deptSection.append(h, bar);
     }
 
-    // 2) Личные прогрессы — неделя/месяц (ширина по 0..100 баллов, иконка — тоже по баллам)
+    // 2) Личные прогрессы — неделя/месяц
     const grid = document.createElement('div');
     grid.className = 'row g-4';
 
     const colWeek = document.createElement('div'); colWeek.className = 'col-12 col-md-6';
-    const h4w = document.createElement('h4'); h4w.textContent = `Ваш прогресс — неделя (текущая)`;
+    const h4w = document.createElement('h4'); h4w.textContent = 'Ваш прогресс — неделя (текущая)';
     const barW = createProgressBar(0, {
       size: 'user',
       widthMode: 'points100',
@@ -140,10 +164,11 @@ export async function renderDashboard(user) {
       iconMode: 'points',
       iconValue: personalWeekPoints
     });
+    addBarLabel(barW, personalWeekPoints);
     colWeek.append(h4w, barW);
 
     const colMonth = document.createElement('div'); colMonth.className = 'col-12 col-md-6';
-    const h4m = document.createElement('h4'); h4m.textContent = `Ваш прогресс — месяц (текущий)`;
+    const h4m = document.createElement('h4'); h4m.textContent = 'Ваш прогресс — месяц (текущий)';
     const barM = createProgressBar(0, {
       size: 'user',
       widthMode: 'points100',
@@ -151,6 +176,7 @@ export async function renderDashboard(user) {
       iconMode: 'points',
       iconValue: personalMonthPoints
     });
+    addBarLabel(barM, personalMonthPoints);
     colMonth.append(h4m, barM);
 
     grid.append(colWeek, colMonth);
@@ -158,7 +184,6 @@ export async function renderDashboard(user) {
   }
 
   async function refreshDashboardData() {
-    // Один батч
     const { dept, users, usersPrevWeek } = await apiBootstrap();
 
     const deptData  = dept || {};
@@ -173,9 +198,8 @@ export async function renderDashboard(user) {
     if (role === 'employee') {
       renderEmployeePanel({ deptData, usersArr });
     } else {
-      // Для не-employee — общий прогресс отдела (месяц)
+      // общий прогресс отдела (месяц)
       const deptMonthPoints = Number(deptData?.monthSum || 0);
-      deptSection.innerHTML = '';
       const deptTitle = document.createElement('h3');
       deptTitle.textContent = 'Прогресс отдела (месяц)';
       const bar = createProgressBar(0, {
@@ -185,6 +209,8 @@ export async function renderDashboard(user) {
         iconMode: 'points',
         iconValue: deptMonthPoints
       });
+      addBarLabel(bar, deptMonthPoints);
+      deptSection.innerHTML = '';
       deptSection.append(deptTitle, bar);
     }
 
@@ -203,7 +229,7 @@ export async function renderDashboard(user) {
     tableTitle.textContent = 'Сотрудники и баллы';
     tableSection.append(tableTitle, createUsersTable(employees));
 
-    // Для админа — секция детального рейтинга (если не создана ранее)
+    // Для админа — секция детального рейтинга
     if (role === 'admin' && !document.getElementById('rating-section')) {
       renderRatingSection(app);
     }
@@ -221,13 +247,13 @@ export async function renderDashboard(user) {
     await refreshDashboardData();
   });
 
-  // Подключаем админ-панель (отметки) в конце
+  // Подключаем админ-панель в конце
   if (role === 'admin') {
     const adminModule = await import('./admin-panel.js');
     app.append(adminModule.createAdminPanel(lastEmployees));
   }
 
-  /* ===== локальные функции секции рейтинга (для админа) ===== */
+  /* ===== секция детального рейтинга (для админа) ===== */
 
   function renderRatingSection(root) {
     const ratingSection = document.createElement('section');
@@ -280,7 +306,7 @@ export async function renderDashboard(user) {
     }
     function weekBounds(date) {
       const d = new Date(date);
-      const day = d.getDay(); // 0..6
+      const day = d.getDay();
       const diffToMon = day === 0 ? -6 : 1 - day;
       const mon = new Date(d); mon.setDate(d.getDate() + diffToMon); mon.setHours(0,0,0,0);
       const sun = new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
@@ -300,17 +326,17 @@ export async function renderDashboard(user) {
     }
 
     // дефолт — прошлая полная неделя
-    const defW = weekBounds(new Date());
-    const prevWeekStart = new Date(defW.from); prevWeekStart.setDate(prevWeekStart.getDate()-7);
-    const prevWeek = weekBounds(prevWeekStart);
-    setDateRange(prevWeek.from, prevWeek.to);
+    const wNow = weekBounds(new Date());
+    const prevStart = new Date(wNow.from); prevStart.setDate(prevStart.getDate()-7);
+    const prev = weekBounds(prevStart);
+    setDateRange(prev.from, prev.to);
 
     card.querySelector('#rt-this-week').addEventListener('click', () => {
       const w = weekBounds(new Date());
       setDateRange(w.from, w.to);
     });
     card.querySelector('#rt-prev-week').addEventListener('click', () => {
-      setDateRange(prevWeek.from, prevWeek.to);
+      setDateRange(prev.from, prev.to);
     });
     card.querySelector('#rt-this-month').addEventListener('click', () => {
       const m = thisMonth();
@@ -329,10 +355,8 @@ export async function renderDashboard(user) {
         </div>
       `;
       try {
-        const res = await apiLeaderboard({ from: fromInp.value, to: toInp.value });
-        const rows = res?.data?.rows || res?.rows || [];
-
-        if (!rows.length) {
+        const rows = await apiLeaderboard({ from: fromInp.value, to: toInp.value });
+        if (!Array.isArray(rows) || rows.length === 0) {
           tbl.innerHTML = `<div class="text-secondary">Нет данных за период.</div>`;
           return;
         }
@@ -358,7 +382,7 @@ export async function renderDashboard(user) {
             <td>${idx + 1}</td>
             <td>${r.name ?? '-'}</td>
             <td class="text-secondary small">${r.email ?? ''}</td>
-            <td><strong>${Number(r.total ?? 0)}</strong></td>
+            <td><strong>${Number(r.points ?? 0)}</strong></td>
           `;
           tbody.appendChild(tr);
         });
@@ -371,7 +395,9 @@ export async function renderDashboard(user) {
           const header = ['#', 'Name', 'Email', 'Score'];
           const csv = [
             header.join(','),
-            ...rows.map((r, i) => [i+1, quoteCsv(r.name||''), quoteCsv(r.email||''), Number(r.total||0)].join(','))
+            ...rows.map((r, i) =>
+              [i+1, quoteCsv(r.name||''), quoteCsv(r.email||''), Number(r.points||0)].join(',')
+            )
           ].join('\n');
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
           const a = document.createElement('a');

@@ -95,11 +95,31 @@ export async function deleteProgress({ id, actorEmail }) {
 }
 
 // Рейтинг за период (детализированная таблица)
-export async function leaderboard({ from, to, period, includeAll = false } = {}) {
-  return httpGet('/leaderboard', {
-    from,
-    to,
-    period,
-    include_all: includeAll ? 1 : 0
+export async function leaderboard({ from, to, includeAll = false } = {}) {
+  const resp = await httpGet('/leaderboard', {
+    from, to, include_all: includeAll ? 1 : 0
   });
+  // Нормализуем к массиву
+  return Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+}
+
+/* ---------- KPI CRUD ---------- */
+
+export async function kpiList({ includeInactive = false } = {}) {
+  const resp = await httpGet('/kpi_list', { include_inactive: includeInactive ? 1 : 0 });
+  return Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+}
+
+export async function kpiCreate({ name, weight, actorEmail }) {
+  return httpGet('/kpi_create', { name, weight, actorEmail });
+}
+
+export async function kpiUpdate({ id, name, weight, active = true, actorEmail }) {
+  return httpGet('/kpi_update', {
+    id, name, weight, active: active ? 1 : 0, actorEmail
+  });
+}
+
+export async function kpiDelete({ id, actorEmail }) {
+  return httpGet('/kpi_delete', { id, actorEmail });
 }
