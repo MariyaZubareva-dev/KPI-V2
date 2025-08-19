@@ -1,15 +1,5 @@
 // js/admin-panel.js
-import {
-  getProgress,
-  recordKPI,
-  logEvent,
-  listProgress,
-  deleteProgress,
-  kpiList,
-  kpiCreate,
-  kpiUpdate,
-  kpiDelete,
-} from './api.js';
+import { getProgress, recordKPI, logEvent, listProgress, deleteProgress } from './api.js';
 
 /**
  * Admin-панель (отметка KPI, история, CRUD задач)
