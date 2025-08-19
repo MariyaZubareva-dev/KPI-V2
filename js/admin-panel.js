@@ -8,7 +8,8 @@ import {
 } from './api.js';
 
 /**
- * Создаёт Admin-панель: выбор сотрудника, отметка KPI, история отметок (с удалением)
+ * Создаёт Admin-панель: выбор сотрудника, отметка KPI (задним числом, многократно),
+ * история отметок (с удалением)
  * @param {Array<{id:number, name:string, email:string, role:string}>} usersData
  */
 export function createAdminPanel(usersData = []) {
@@ -24,7 +25,7 @@ export function createAdminPanel(usersData = []) {
   title.textContent = 'Admin-панель';
   container.appendChild(title);
 
-  // Выбор пользователя
+  // Выбор сотрудника
   const selectWrap = document.createElement('div');
   selectWrap.className = 'mb-3';
 
@@ -46,24 +47,41 @@ export function createAdminPanel(usersData = []) {
   selectWrap.append(selectLbl, select);
   container.appendChild(selectWrap);
 
-  // KPI-list + История — два блока
+  // Два столбца: слева отметка KPI, справа история
   const blocks = document.createElement('div');
   blocks.className = 'row g-4';
 
+  // ЛЕВЫЙ столбец
   const colLeft = document.createElement('div');
   colLeft.className = 'col-12 col-lg-6';
+
   const kpiCard = document.createElement('div');
   kpiCard.className = 'card';
   kpiCard.innerHTML = `
     <div class="card-body">
       <h5 class="card-title">Отметка KPI</h5>
+
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-12 col-sm-6">
+          <label for="mark-date" class="form-label mb-1">Дата отметки</label>
+          <input type="date" id="mark-date" class="form-control" />
+        </div>
+        <div class="col-12 col-sm-6">
+          <small class="text-secondary">
+            По умолчанию — сегодня. Можно менять для «задним числом».
+          </small>
+        </div>
+      </div>
+
       <div id="kpi-list"></div>
     </div>
   `;
   colLeft.appendChild(kpiCard);
 
+  // ПРАВЫЙ столбец
   const colRight = document.createElement('div');
   colRight.className = 'col-12 col-lg-6';
+
   const histCard = document.createElement('div');
   histCard.className = 'card';
   histCard.innerHTML = `
@@ -80,19 +98,28 @@ export function createAdminPanel(usersData = []) {
   blocks.append(colLeft, colRight);
   container.appendChild(blocks);
 
-  // поведение
+  // refs
   const kpiList = kpiCard.querySelector('#kpi-list');
   const histList = histCard.querySelector('#history-list');
+  const markDateInput = kpiCard.querySelector('#mark-date');
 
+  // Установим сегодняшнюю дату
+  markDateInput.value = todayISO();
+
+  // Общий рефреш: KPI + История
   const refreshAll = async () => {
     const uid = select.value;
     await Promise.all([
-      loadKpisForUser(uid, kpiList),
+      loadKpisForUser(uid, kpiList, () => markDateInput.value),
       renderHistoryFor(uid, histList),
     ]);
   };
 
   select.addEventListener('change', refreshAll);
+  markDateInput.addEventListener('change', () => {
+    // дата влияет только на будущие добавления, но перерисуем KPI на всякий
+    loadKpisForUser(select.value, kpiList, () => markDateInput.value);
+  });
 
   if (employees.length) {
     select.value = select.options[0].value;
@@ -105,14 +132,30 @@ export function createAdminPanel(usersData = []) {
   return container;
 }
 
-/** Рендерит список KPI для пользователя (с чекбоксами отметки) */
-async function loadKpisForUser(targetUserId, container) {
+/** Рендерит список KPI для пользователя с кнопкой «Добавить» и счётчиком за неделю */
+async function loadKpisForUser(targetUserId, container, getSelectedDate) {
   container.innerHTML = spinner('Загружаем KPI…');
 
   try {
+    // 1) KPI-список
     const res = await getProgress('user', targetUserId);
     const kpis = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
     kpis.sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
+
+    // 2) Счётчики за текущую неделю по каждому KPI
+    const { start, end } = thisWeekBounds();
+    const histResp = await listProgress({
+      userID: targetUserId,
+      from: start,
+      to: end,
+      limit: 500,
+    });
+    const weekRows = Array.isArray(histResp?.data) ? histResp.data : [];
+    const counts = new Map(); // kpi_id -> count
+    weekRows.forEach(r => {
+      const id = String(r.kpi_id);
+      counts.set(id, (counts.get(id) || 0) + 1);
+    });
 
     container.innerHTML = '';
     if (!kpis.length) {
@@ -124,38 +167,30 @@ async function loadKpisForUser(targetUserId, container) {
     list.className = 'd-flex flex-column gap-2';
 
     kpis.forEach(kpi => {
-      const row = document.createElement('label');
+      const kpiId = String(kpi.KPI_ID);
+      const weekCount = counts.get(kpiId) || 0;
+
+      const row = document.createElement('div');
       row.className = 'd-flex align-items-center justify-content-between gap-3';
 
       const left = document.createElement('div');
-      left.className = 'd-flex align-items-center gap-2';
+      left.className = 'd-flex flex-column';
 
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.dataset.kpiId = String(kpi.KPI_ID);
-      input.dataset.weight = String(kpi.weight ?? 0);
-      input.disabled = !!kpi.done; // пока действуют ограничения «раз в неделю»
-      input.checked = !!kpi.done;
+      const name = document.createElement('div');
+      name.innerHTML = `<strong>${escapeHtml(kpi.name)}</strong> <span class="text-secondary">(${Number(kpi.weight)})</span>`;
 
-      const name = document.createElement('span');
-      name.textContent = `${kpi.name} (${kpi.weight})`;
+      const sub = document.createElement('small');
+      sub.className = 'text-secondary';
+      sub.textContent = `Эта неделя: ${weekCount}`;
 
-      left.append(input, name);
+      left.append(name, sub);
 
       const right = document.createElement('div');
-      if (kpi.done) {
-        const badge = document.createElement('span');
-        badge.className = 'badge text-bg-success';
-        badge.textContent = 'выполнено (эта неделя)';
-        right.appendChild(badge);
-      }
-
-      row.append(left, right);
-      list.appendChild(row);
-
-      input.addEventListener('change', async () => {
-        if (!input.checked) return;
-        input.disabled = true;
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn btn-primary btn-sm';
+      addBtn.textContent = 'Добавить';
+      addBtn.addEventListener('click', async () => {
+        addBtn.disabled = true;
 
         // кто отмечает
         let actorEmail = '';
@@ -164,36 +199,46 @@ async function loadKpisForUser(targetUserId, container) {
           actorEmail = u?.email || u?.Email || '';
         } catch {}
 
+        // дата отметки
+        const iso = normalizeISODate(getSelectedDate?.());
         try {
           await recordKPI({
             userID: String(targetUserId),
-            kpiId: String(kpi.KPI_ID),
-            actorEmail
+            kpiId: kpiId,
+            actorEmail,
+            date: iso, // задним числом/сегодня
           });
 
           try {
             await logEvent('kpi_recorded', {
               userID: String(targetUserId),
-              kpiId: String(kpi.KPI_ID),
+              kpiId,
               score: kpi.weight,
-              actorEmail
+              actorEmail,
+              date: iso,
             });
           } catch {}
 
-          // обновим KPI-лист и историю, дернём дашборд
-          await loadKpisForUser(targetUserId, container);
-          await renderHistoryFor(targetUserId, document.querySelector('#history-list'));
+          // обновим список KPI (счётчики) и историю
+          await loadKpisForUser(targetUserId, container, getSelectedDate);
+          const histEl = document.querySelector('#history-list');
+          if (histEl) await renderHistoryFor(targetUserId, histEl);
 
+          // и дёрнем обновление дашборда
           document.dispatchEvent(new CustomEvent('kpi:recorded', {
-            detail: { userID: String(targetUserId), kpiId: String(kpi.KPI_ID) }
+            detail: { userID: String(targetUserId), kpiId }
           }));
         } catch (err) {
           console.error('Ошибка записи KPI:', err);
           alert('Не удалось записать KPI. Подробности — в консоли.');
-          input.checked = false;
-          input.disabled = false;
+        } finally {
+          addBtn.disabled = false;
         }
       });
+
+      right.append(addBtn);
+      row.append(left, right);
+      list.appendChild(row);
     });
 
     container.appendChild(list);
@@ -254,10 +299,8 @@ async function renderHistoryFor(userID, container) {
 
         try {
           await deleteProgress({ id: r.id, actorEmail });
-
           try { await logEvent('progress_deleted_ui', { id: r.id, userID, actorEmail }); } catch {}
 
-          // Обновляем историю и уведомляем дашборд
           await renderHistoryFor(userID, container);
           document.dispatchEvent(new CustomEvent('kpi:recorded'));
         } catch (e) {
@@ -284,6 +327,42 @@ function spinner(text) {
       <span>${text}</span>
     </div>
   `;
+}
+function todayISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function normalizeISODate(v) {
+  // ожидаем YYYY-MM-DD; если пусто/битое — сегодня
+  if (typeof v !== 'string') return todayISO();
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? v : todayISO();
+}
+function thisWeekBounds() {
+  const now = new Date();
+  const day = now.getDay(); // 0..6, 0==Sun
+  const monday = new Date(now);
+  const diffToMonday = (day === 0 ? -6 : 1 - day);
+  monday.setDate(now.getDate() + diffToMonday);
+  monday.setHours(0,0,0,0);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23,59,59,999);
+
+  return {
+    start: isoDate(monday),
+    end: isoDate(sunday),
+  };
+}
+function isoDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 function formatRuDate(iso) {
   if (!iso) return '-';
