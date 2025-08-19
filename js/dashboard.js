@@ -1,5 +1,5 @@
 // js/dashboard.js
-import { getProgress as apiGetProgress, logEvent, bootstrap as apiBootstrap } from './api.js';
+import { logEvent, bootstrap as apiBootstrap, leaderboard as apiLeaderboard } from './api.js';
 import {
   createProgressBar,
   createUsersTable,
@@ -19,7 +19,7 @@ export async function renderDashboard(user) {
 
   app.innerHTML = '';
 
-  // Заголовок + logout
+  // Верхняя панель — единое приветствие + logout
   const title = document.createElement('h2');
   title.textContent = `Добро пожаловать, ${userName}!`;
 
@@ -94,8 +94,6 @@ export async function renderDashboard(user) {
 
     employeeSection.innerHTML = '';
 
-    // (убрали дублирующее "Здравствуйте, ...")
-
     if (!me) {
       const warn = document.createElement('div');
       warn.className = 'text-secondary';
@@ -113,62 +111,54 @@ export async function renderDashboard(user) {
     const weeksInMonth    = Number(deptData?.weeksInMonth || 4);
     const perUserMaxMonth = perUserMaxWeek * weeksInMonth || 1;
 
-    const personalWeekPercent  = Math.min(100, Math.round((personalWeekPoints  / perUserMaxWeek)  * 100));
-    const personalMonthPercent = Math.min(100, Math.round((personalMonthPoints / perUserMaxMonth) * 100));
-    const deptMonthPoints100   = Math.min(100, Math.round(Number(deptData?.monthPercent || 0))); // трактуем как баллы 0..100
+    const deptMonthPoints = Number(deptData?.monthSum || 0); // выводим числом
 
-    // 1) Прогресс отдела — месяц
-    const deptBlock = document.createElement('div');
-    const h4d = document.createElement('h4');
-    h4d.textContent = 'Прогресс отдела — месяц (текущий)';
-    deptBlock.append(
-      h4d,
-      // ширина — баллы 0..100, иконка — по баллам, на полосе показываем общие баллы отдела за месяц
-      createProgressBar(deptMonthPoints100, {
+    // 1) Прогресс отдела — месяц (считаем ширину по шкале 0..100, цвет и иконка — по баллам)
+    {
+      deptSection.innerHTML = '';
+      const h = document.createElement('h3'); h.textContent = 'Прогресс отдела (месяц)';
+      const bar = createProgressBar(0, {
+        size: 'department',
         widthMode: 'points100',
-        widthPoints: deptMonthPoints100,
+        widthPoints: Math.min(Math.max(deptMonthPoints, 0), 100),
         iconMode: 'points',
-        iconValue: deptMonthPoints100,
-        pointsLabel: Number(deptData?.monthSum ?? 0)
-      })
-    );
-    employeeSection.append(deptBlock);
+        iconValue: deptMonthPoints
+      });
+      deptSection.append(h, bar);
+    }
 
-    // 2) Личные прогрессы
+    // 2) Личные прогрессы — неделя/месяц (ширина по 0..100 баллов, иконка — тоже по баллам)
     const grid = document.createElement('div');
     grid.className = 'row g-4';
 
     const colWeek = document.createElement('div'); colWeek.className = 'col-12 col-md-6';
-    const h4w = document.createElement('h4'); h4w.textContent = 'Ваш прогресс — неделя (текущая)';
-    colWeek.append(
-      h4w,
-      createProgressBar(personalWeekPercent, {
-        widthMode: 'percent',
-        iconMode: 'points',
-        iconValue: personalWeekPoints,
-        pointsLabel: personalWeekPoints
-      })
-    );
+    const h4w = document.createElement('h4'); h4w.textContent = `Ваш прогресс — неделя (текущая)`;
+    const barW = createProgressBar(0, {
+      size: 'user',
+      widthMode: 'points100',
+      widthPoints: Math.min(Math.max(personalWeekPoints, 0), 100),
+      iconMode: 'points',
+      iconValue: personalWeekPoints
+    });
+    colWeek.append(h4w, barW);
 
     const colMonth = document.createElement('div'); colMonth.className = 'col-12 col-md-6';
-    const h4m = document.createElement('h4'); h4m.textContent = 'Ваш прогресс — месяц (текущий)';
-    colMonth.append(
-      h4m,
-      createProgressBar(personalMonthPercent, {
-        widthMode: 'percent',
-        iconMode: 'points',
-        iconValue: personalMonthPoints,
-        pointsLabel: personalMonthPoints
-      })
-    );
+    const h4m = document.createElement('h4'); h4m.textContent = `Ваш прогресс — месяц (текущий)`;
+    const barM = createProgressBar(0, {
+      size: 'user',
+      widthMode: 'points100',
+      widthPoints: Math.min(Math.max(personalMonthPoints, 0), 100),
+      iconMode: 'points',
+      iconValue: personalMonthPoints
+    });
+    colMonth.append(h4m, barM);
 
     grid.append(colWeek, colMonth);
     employeeSection.append(grid);
   }
 
-
   async function refreshDashboardData() {
-    // Один вызов вместо трёх
+    // Один батч
     const { dept, users, usersPrevWeek } = await apiBootstrap();
 
     const deptData  = dept || {};
@@ -182,25 +172,23 @@ export async function renderDashboard(user) {
 
     if (role === 'employee') {
       renderEmployeePanel({ deptData, usersArr });
-    }
-
-    if (role !== 'employee') {
+    } else {
+      // Для не-employee — общий прогресс отдела (месяц)
+      const deptMonthPoints = Number(deptData?.monthSum || 0);
       deptSection.innerHTML = '';
       const deptTitle = document.createElement('h3');
       deptTitle.textContent = 'Прогресс отдела (месяц)';
-      const deptMonthPoints100 = Math.min(100, Math.round(Number(deptData?.monthPercent || 0)));
-      deptSection.append(
-        deptTitle,
-        createProgressBar(deptMonthPoints100, {
-          widthMode: 'points100',
-          widthPoints: deptMonthPoints100,
-          iconMode: 'points',
-          iconValue: deptMonthPoints100,
-          pointsLabel:Number(deptData?.monthSum ?? 0)
-        })
-      );
+      const bar = createProgressBar(0, {
+        size: 'department',
+        widthMode: 'points100',
+        widthPoints: Math.min(Math.max(deptMonthPoints, 0), 100),
+        iconMode: 'points',
+        iconValue: deptMonthPoints
+      });
+      deptSection.append(deptTitle, bar);
     }
 
+    // ТОП-3 за прошлую неделю и текущий месяц
     leaderWeekSec.innerHTML = '';
     leaderWeekSec.append(buildLeaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
 
@@ -209,10 +197,16 @@ export async function renderDashboard(user) {
     h4Month.textContent = 'ТОП-3 за месяц';
     leaderMonthSec.append(h4Month, createLeaderboard(employees, 'month'));
 
+    // Таблица сотрудников
     tableSection.innerHTML = '';
     const tableTitle = document.createElement('h4');
     tableTitle.textContent = 'Сотрудники и баллы';
     tableSection.append(tableTitle, createUsersTable(employees));
+
+    // Для админа — секция детального рейтинга (если не создана ранее)
+    if (role === 'admin' && !document.getElementById('rating-section')) {
+      renderRatingSection(app);
+    }
   }
 
   try {
@@ -227,9 +221,174 @@ export async function renderDashboard(user) {
     await refreshDashboardData();
   });
 
+  // Подключаем админ-панель (отметки) в конце
   if (role === 'admin') {
     const adminModule = await import('./admin-panel.js');
     app.append(adminModule.createAdminPanel(lastEmployees));
+  }
+
+  /* ===== локальные функции секции рейтинга (для админа) ===== */
+
+  function renderRatingSection(root) {
+    const ratingSection = document.createElement('section');
+    ratingSection.id = 'rating-section';
+    root.append(ratingSection);
+
+    const card = document.createElement('div');
+    card.className = 'card mt-4';
+    card.innerHTML = `
+      <div class="card-body">
+        <h4 class="card-title mb-3">Детальная таблица рейтинга</h4>
+        <div class="row g-2 align-items-end mb-3">
+          <div class="col-6 col-md-3">
+            <label class="form-label mb-1">С</label>
+            <input type="date" class="form-control" id="rt-from" />
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label mb-1">По</label>
+            <input type="date" class="form-control" id="rt-to" />
+          </div>
+          <div class="col-12 col-md-6 d-flex gap-2">
+            <button class="btn btn-outline-secondary" id="rt-this-week">Эта неделя</button>
+            <button class="btn btn-outline-secondary" id="rt-prev-week">Прошлая неделя</button>
+            <button class="btn btn-outline-secondary" id="rt-this-month">Этот месяц</button>
+            <button class="btn btn-outline-secondary" id="rt-last-month">Прошлый месяц</button>
+            <button class="btn btn-primary ms-auto" id="rt-apply">Показать</button>
+          </div>
+        </div>
+        <div class="mb-2 d-flex">
+          <button class="btn btn-outline-primary btn-sm ms-auto" id="rt-export">Экспорт CSV</button>
+        </div>
+        <div id="rt-table"></div>
+      </div>
+    `;
+    ratingSection.appendChild(card);
+
+    const fromInp = card.querySelector('#rt-from');
+    const toInp   = card.querySelector('#rt-to');
+    const tbl     = card.querySelector('#rt-table');
+
+    function setDateRange(from, to) {
+      fromInp.value = from;
+      toInp.value   = to;
+    }
+    function fmt(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const dd= String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${dd}`;
+    }
+    function weekBounds(date) {
+      const d = new Date(date);
+      const day = d.getDay(); // 0..6
+      const diffToMon = day === 0 ? -6 : 1 - day;
+      const mon = new Date(d); mon.setDate(d.getDate() + diffToMon); mon.setHours(0,0,0,0);
+      const sun = new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
+      return { from: fmt(mon), to: fmt(sun) };
+    }
+    function thisMonth() {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end   = new Date(now.getFullYear(), now.getMonth()+1, 0);
+      return { from: fmt(start), to: fmt(end) };
+    }
+    function lastMonth() {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth()-1, 1);
+      const end   = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { from: fmt(start), to: fmt(end) };
+    }
+
+    // дефолт — прошлая полная неделя
+    const defW = weekBounds(new Date());
+    const prevWeekStart = new Date(defW.from); prevWeekStart.setDate(prevWeekStart.getDate()-7);
+    const prevWeek = weekBounds(prevWeekStart);
+    setDateRange(prevWeek.from, prevWeek.to);
+
+    card.querySelector('#rt-this-week').addEventListener('click', () => {
+      const w = weekBounds(new Date());
+      setDateRange(w.from, w.to);
+    });
+    card.querySelector('#rt-prev-week').addEventListener('click', () => {
+      setDateRange(prevWeek.from, prevWeek.to);
+    });
+    card.querySelector('#rt-this-month').addEventListener('click', () => {
+      const m = thisMonth();
+      setDateRange(m.from, m.to);
+    });
+    card.querySelector('#rt-last-month').addEventListener('click', () => {
+      const m = lastMonth();
+      setDateRange(m.from, m.to);
+    });
+
+    async function renderTable() {
+      tbl.innerHTML = `
+        <div class="d-flex align-items-center gap-2 my-2">
+          <div class="spinner-border" role="status" aria-hidden="true"></div>
+          <span>Считаем рейтинг…</span>
+        </div>
+      `;
+      try {
+        const res = await apiLeaderboard({ from: fromInp.value, to: toInp.value });
+        const rows = res?.data?.rows || res?.rows || [];
+
+        if (!rows.length) {
+          tbl.innerHTML = `<div class="text-secondary">Нет данных за период.</div>`;
+          return;
+        }
+
+        const table = document.createElement('table');
+        table.className = 'table table-striped table-sm align-middle';
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th style="width:60px;">#</th>
+              <th>Сотрудник</th>
+              <th style="width:200px;">Email</th>
+              <th style="width:120px;">Баллы</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        `;
+        const tbody = table.querySelector('tbody');
+
+        rows.forEach((r, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${idx + 1}</td>
+            <td>${r.name ?? '-'}</td>
+            <td class="text-secondary small">${r.email ?? ''}</td>
+            <td><strong>${Number(r.total ?? 0)}</strong></td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        tbl.innerHTML = '';
+        tbl.appendChild(table);
+
+        // экспорт CSV
+        card.querySelector('#rt-export').onclick = () => {
+          const header = ['#', 'Name', 'Email', 'Score'];
+          const csv = [
+            header.join(','),
+            ...rows.map((r, i) => [i+1, quoteCsv(r.name||''), quoteCsv(r.email||''), Number(r.total||0)].join(','))
+          ].join('\n');
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `leaderboard_${fromInp.value}_${toInp.value}.csv`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        };
+        function quoteCsv(s){ const t=String(s).replaceAll('"','""'); return `"${t}"`; }
+      } catch (e) {
+        console.error(e);
+        tbl.innerHTML = `<div class="alert alert-danger">Не удалось получить рейтинг.</div>`;
+      }
+    }
+
+    card.querySelector('#rt-apply').addEventListener('click', renderTable);
+    renderTable();
   }
 }
 // без авто-инициализации — вызывается из auth.js

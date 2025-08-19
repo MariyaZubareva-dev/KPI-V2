@@ -46,7 +46,7 @@ export async function logout(email) {
 export async function getProgress(scope, userID) {
   const params = { scope };
   if (userID) params.userID = userID;
-  return httpGet('/getprogress', params); // backend в нижнем регистре
+  return httpGet('/getprogress', params); // ← строго нижний регистр
 }
 
 // KPI конкретного пользователя за текущую неделю
@@ -60,8 +60,9 @@ export async function getUsersAggregate(period = 'this_week') {
   return httpGet('/getprogress', { scope });
 }
 
-// Записать KPI (только админ). score вычисляется на бэке из веса KPI.
+// Записать KPI (только админ)
 export async function recordKPI({ userID, kpiId, score, date, actorEmail }) {
+  // backend вычисляет score сам из веса KPI, но поле не мешает
   return httpGet('/recordkpi', { userID, kpiId, score, date, actorEmail });
 }
 
@@ -92,26 +93,13 @@ export async function listProgress({ userID, from, to, limit = 50 }) {
 export async function deleteProgress({ id, actorEmail }) {
   return httpGet('/progress_delete', { id, actorEmail });
 }
-// Список KPI
-export async function kpiList({ includeInactive = true } = {}) {
-  return httpGet('/kpi_list', { include_inactive: includeInactive ? 1 : 0 });
-}
 
-// Создать KPI
-export async function kpiCreate({ name, weight, actorEmail }) {
-  return httpGet('/kpi_create', { name, weight, actorEmail });
-}
-
-// Обновить KPI (name/weight/active — опционально)
-export async function kpiUpdate({ id, name, weight, active, actorEmail }) {
-  const params = { id, actorEmail };
-  if (name !== undefined)   params.name = name;
-  if (weight !== undefined) params.weight = weight;
-  if (active !== undefined) params.active = active ? 1 : 0;
-  return httpGet('/kpi_update', params);
-}
-
-// Деактивировать KPI (мягкое удаление)
-export async function kpiDelete({ id, actorEmail }) {
-  return httpGet('/kpi_delete', { id, actorEmail });
+// Рейтинг за период (детализированная таблица)
+export async function leaderboard({ from, to, period, includeAll = false } = {}) {
+  return httpGet('/leaderboard', {
+    from,
+    to,
+    period,
+    include_all: includeAll ? 1 : 0
+  });
 }
