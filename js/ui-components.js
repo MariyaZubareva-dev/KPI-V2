@@ -24,14 +24,15 @@ export function createLoader(text = 'Загружаем данные…') {
  *     pointsLabel: <число-на-полосе>
  *   })
  *
- * @param {number} value
+/**
+ * Прогресс-бар с персонажем и числом баллов на цветной полосе.
+ * @param {number} value - если widthMode='percent' это проценты (0..100), иначе игнорируется
  * @param {{
  *   size?: 'department'|'user',
- *   widthMode?: 'percent'|'points100',
- *   widthPoints?: number,
- *   iconMode?: 'percent'|'points',
- *   iconValue?: number,
- *   pointsLabel?: number | string   // что вывести на закрашенной части
+ *   widthMode?: 'percent'|'points100', // чем задаём ширину бара
+ *   widthPoints?: number,              // баллы 0..100 для ширины, если points100
+ *   iconMode?: 'percent'|'points',     // чем выбираем иконку
+ *   iconValue?: number                 // значение для иконки (проценты или баллы)
  * }} opts
  */
 export function createProgressBar(value, opts = {}) {
@@ -40,25 +41,28 @@ export function createProgressBar(value, opts = {}) {
     widthMode = 'percent',
     widthPoints,
     iconMode = 'percent',
-    iconValue,
-    pointsLabel
+    iconValue
   } = opts;
 
+  // ширина бара в процентах
   const widthPercent = widthMode === 'points100'
-    ? clampPercent(Number(widthPoints ?? iconValue ?? 0))
+    ? clampPercent(Number(widthPoints ?? iconValue ?? 0))     // 0..100 баллов == 0..100%
     : clampPercent(value);
 
-  const iconMetric = Number(iconValue ?? (iconMode === 'percent' ? widthPercent : 0)) || 0;
+  // значение в БАЛЛАХ (для цвета, иконки и подписи)
+  const points = Number(
+    (iconMode === 'points')
+      ? (iconValue ?? widthPoints ?? 0)
+      : (widthMode === 'points100' ? (widthPoints ?? iconValue ?? 0) : 0)
+  ) || 0;
 
   const wrapper = document.createElement('div');
   wrapper.classList.add(`progress-${size}`, 'mb-3');
 
-  // Полоса
+  // сам бар
   const bar = document.createElement('div');
   bar.classList.add('progress');
-  // важное — позволяем оверлею выходить за пределы закрашенной части
   bar.style.position = 'relative';
-  bar.style.overflow = 'visible';
 
   const inner = document.createElement('div');
   inner.classList.add('progress-bar');
@@ -68,73 +72,81 @@ export function createProgressBar(value, opts = {}) {
   inner.setAttribute('aria-valuemin', '0');
   inner.setAttribute('aria-valuemax', '100');
 
-  inner.style.backgroundColor =
-    (widthMode === 'points100')
-      ? colorByPoints(Number(widthPoints ?? iconValue ?? 0))
-      : colorByPercent(widthPercent);
+  // цвет по балльным порогам
+  const bg = colorByPoints(points);
+  inner.style.backgroundColor = bg;
+
+  // ЧИСЛО БАЛЛОВ на цветной полосе
+  inner.style.display = 'flex';
+  inner.style.justContent = 'flex-end';
+  inner.style.justifyContent = 'flex-end';
+  inner.style.alignItems = 'center';
+  inner.style.paddingRight = '8px';
+
+  const valueLabel = document.createElement('span');
+  valueLabel.className = 'kpi-bar-value';
+  valueLabel.textContent = formatPoints(points);
+  valueLabel.style.fontWeight = '700';
+  valueLabel.style.fontSize = (size === 'user') ? '14px' : '16px';
+  valueLabel.style.lineHeight = '1';
+  valueLabel.style.color = pickTextColor(bg);
+  inner.appendChild(valueLabel);
 
   bar.appendChild(inner);
 
-  // Оверлей-метка с числом баллов на окрашенной границе
-  if (pointsLabel !== undefined && pointsLabel !== null && pointsLabel !== '') {
-    const val = document.createElement('span');
-    val.className = 'progress-value';
-    val.textContent = String(pointsLabel);
-    val.style.position = 'absolute';
-    val.style.top = '50%';
-    val.style.left = `${widthPercent}%`;
-    // если заливка короткая — уводим метку вправо и делаем тёмной,
-    // если нормальная — чуть внутрь заливки и белой
-    if (widthPercent < 12) {
-      val.style.transform = 'translate(6px, -50%)';
-      val.style.color = '#111';
-      val.style.textShadow = 'none';
-    } else {
-      val.style.transform = 'translate(-8px, -50%)';
-      val.style.color = '#fff';
-      val.style.textShadow = '0 1px 2px rgba(0,0,0,.35)';
-    }
-    val.style.fontWeight = '700';
-    val.style.fontSize = '12px';
-    val.style.whiteSpace = 'nowrap';
-    val.style.pointerEvents = 'none';
-    bar.appendChild(val);
-  }
-
-  // Иконка + подпись в одну строку
+  // персонаж
   const charRow = document.createElement('div');
   charRow.classList.add('kpi-char-row');
-  charRow.style.marginBottom = '10px';
 
   const track = document.createElement('div');
   track.classList.add('kpi-char-track');
   track.style.width = `${widthPercent}%`;
   track.style.textAlign = 'right';
 
-  const iconWrap = document.createElement('div');
-  iconWrap.style.display = 'inline-flex';
-  iconWrap.style.flexDirection = 'column';
-  iconWrap.style.alignItems = 'center';
-
-  const img = createCharacterImage({ mode: iconMode, value: iconMetric });
-
-  const caption = document.createElement('div');
-  caption.className = 'kpi-char-caption';
-  caption.textContent = labelByScore(iconMode === 'points' ? iconMetric : percentToPoints(iconMetric));
-  caption.style.marginTop = '4px';
-  caption.style.fontSize = '12px';
-  caption.style.lineHeight = '1';
-  caption.style.color = '#6b7280';
-  caption.style.fontWeight = '500';
-  caption.style.whiteSpace = 'nowrap';
-
-  iconWrap.append(img, caption);
-  track.appendChild(iconWrap);
+  const img = createCharacterImage({
+    mode: iconMode,
+    value: Number(iconValue ?? (iconMode === 'percent' ? widthPercent : 0))
+  });
+  track.appendChild(img);
   charRow.appendChild(track);
 
   wrapper.append(bar, charRow);
   return wrapper;
 }
+
+/* ---------- helpers ---------- */
+
+function clampPercent(v) {
+  const n = Number(v) || 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+// Цвета по ТЗ:
+// ≥70 — #36B37E, 50–69 — #9fc5e8, 30–49 — #ffd966, 0–29 — #FF0404
+function colorByPoints(points) {
+  const p = Number(points) || 0;
+  if (p >= 70) return '#36B37E';
+  if (p >= 50) return '#9fc5e8';
+  if (p >= 30) return '#ffd966';
+  return '#FF0404';
+}
+
+// Контрастный цвет текста поверх фона
+function pickTextColor(bg) {
+  const b = String(bg).toLowerCase();
+  // тёмные: зелёный/красный -> белый текст
+  if (b === '#36b37e' || b === '#ff0404') return '#fff';
+  // светлые: жёлтый/голубой -> чёрный текст
+  return '#000';
+}
+
+// Красиво форматируем 0.25/1/12.5 и т.п.
+function formatPoints(p) {
+  const n = Number(p) || 0;
+  // до двух знаков, без лишних нулей
+  return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+}
+
 
 
 /* ---------- helpers ---------- */
