@@ -12,27 +12,24 @@ export function createLoader(text = 'Загружаем данные…') {
 }
 
 /**
- * Прогресс-бар с персонажем и подписью.
+ * Прогресс-бар с персонажем и числом баллов на цветной полосе.
  *
  * По умолчанию value трактуется как проценты (0..100).
- * Для работы в «баллах 0..100»:
- *   createProgressBar(value, {
+ * Для работы в «баллах 0..100» используйте:
+ *   createProgressBar(0, {
  *     widthMode: 'points100',
- *     widthPoints: <0..100>,
+ *     widthPoints: <0..100>,      // ширина бара (в баллах)
  *     iconMode: 'points',
- *     iconValue: <0..100>,
- *     pointsLabel: <число-на-полосе>
+ *     iconValue: <0..100>         // выбор иконки и цвет по баллам
  *   })
  *
-/**
- * Прогресс-бар с персонажем и числом баллов на цветной полосе.
  * @param {number} value - если widthMode='percent' это проценты (0..100), иначе игнорируется
  * @param {{
  *   size?: 'department'|'user',
- *   widthMode?: 'percent'|'points100', // чем задаём ширину бара
- *   widthPoints?: number,              // баллы 0..100 для ширины, если points100
- *   iconMode?: 'percent'|'points',     // чем выбираем иконку
- *   iconValue?: number                 // значение для иконки (проценты или баллы)
+ *   widthMode?: 'percent'|'points100',
+ *   widthPoints?: number,
+ *   iconMode?: 'percent'|'points',
+ *   iconValue?: number
  * }} opts
  */
 export function createProgressBar(value, opts = {}) {
@@ -44,14 +41,14 @@ export function createProgressBar(value, opts = {}) {
     iconValue
   } = opts;
 
-  // ширина бара в процентах
-  const widthPercent = widthMode === 'points100'
-    ? clampPercent(Number(widthPoints ?? iconValue ?? 0))     // 0..100 баллов == 0..100%
+  // Ширина бара в процентах
+  const widthPercent = (widthMode === 'points100')
+    ? clampPercent(Number(widthPoints ?? iconValue ?? 0)) // 0..100 баллов == 0..100%
     : clampPercent(value);
 
-  // значение в БАЛЛАХ (для цвета, иконки и подписи)
+  // Баллы (для цвета, иконки и надписи)
   const points = Number(
-    (iconMode === 'points')
+    iconMode === 'points'
       ? (iconValue ?? widthPoints ?? 0)
       : (widthMode === 'points100' ? (widthPoints ?? iconValue ?? 0) : 0)
   ) || 0;
@@ -59,7 +56,7 @@ export function createProgressBar(value, opts = {}) {
   const wrapper = document.createElement('div');
   wrapper.classList.add(`progress-${size}`, 'mb-3');
 
-  // сам бар
+  // Бар
   const bar = document.createElement('div');
   bar.classList.add('progress');
   bar.style.position = 'relative';
@@ -72,14 +69,13 @@ export function createProgressBar(value, opts = {}) {
   inner.setAttribute('aria-valuemin', '0');
   inner.setAttribute('aria-valuemax', '100');
 
-  // цвет по балльным порогам
+  // Цвет по балльным порогам
   const bg = colorByPoints(points);
   inner.style.backgroundColor = bg;
 
-  // ЧИСЛО БАЛЛОВ на цветной полосе
+  // Число баллов поверх заливки (справа)
   inner.style.display = 'flex';
-  inner.style.justContent = 'flex-end';
-  inner.style.justifyContent = 'flex-end';
+  inner.style.justifyContent = 'flex-end'; // <- было justContent (опечатка)
   inner.style.alignItems = 'center';
   inner.style.paddingRight = '8px';
 
@@ -94,7 +90,7 @@ export function createProgressBar(value, opts = {}) {
 
   bar.appendChild(inner);
 
-  // персонаж
+  // Персонаж
   const charRow = document.createElement('div');
   charRow.classList.add('kpi-char-row');
 
@@ -143,18 +139,9 @@ function pickTextColor(bg) {
 // Красиво форматируем 0.25/1/12.5 и т.п.
 function formatPoints(p) {
   const n = Number(p) || 0;
-  // до двух знаков, без лишних нулей
   return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 }
 
-
-
-/* ---------- helpers ---------- */
-
-function clampPercent(v) {
-  const n = Number(v) || 0;
-  return Math.max(0, Math.min(100, n));
-}
 function percentToPoints(p) { return clampPercent(p); }
 
 function labelByScore(points0to100) {
@@ -162,24 +149,10 @@ function labelByScore(points0to100) {
   if (s >= 70) return 'Изобилие';
   if (s >= 50) return 'Минимум, чтобы выжить';
   if (s >= 30) return 'Зима впроголодь';
-  return 'Старт сбора урожая';
+  return 'Старт';
 }
 
-function colorByPoints(points) {
-  const p = Number(points) || 0;
-  if (p >= 70) return '#36B37E';
-  if (p >= 50) return '#9fc5e8';
-  if (p >= 30) return '#ffd966';
-  return '#FF0404';
-}
-function colorByPercent(percent) {
-  const p = Number(percent) || 0;
-  if (p >= 70) return '#36B37E';
-  if (p >= 50) return '#9fc5e8';
-  if (p >= 30) return '#ffd966';
-  return '#FF0404';
-}
-
+/** Картинка-персонаж по баллам (или %). */
 function createCharacterImage({ mode, value }) {
   const v = Number(value) || 0;
   const metric = (mode === 'points') ? v : percentToPoints(v);
@@ -188,7 +161,7 @@ function createCharacterImage({ mode, value }) {
   if (metric >= 70)       src = './images/nyusha.png';
   else if (metric >= 50)  src = './images/karkarych-sovunya.png';
   else if (metric >= 30)  src = './images/kopatych.png';
-  // 0–29 остаётся krosh
+  // 0–29 — krosh
 
   const img = document.createElement('img');
   img.width = 64;
