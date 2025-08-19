@@ -1,9 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
-// src/worker.ts
-// Cloudflare Worker + D1. Роуты:
-// /ping, /login, /getprogress, /recordkpi, /log, /bootstrap,
-// /progress_list, /progress_delete, /leaderboard
+// Cloudflare Worker + D1.
+// Роуты: /ping, /login, /getprogress, /recordkpi, /log, /bootstrap, /leaderboard, /progress_list, /progress_delete
 
 export interface Env {
   DB: D1Database;
@@ -130,7 +128,7 @@ async function cacheGet(env: Env, req: Request, compute: () => Promise<Response>
   return withCORS(env, cacheable);
 }
 
-// Удаление кэшированных агрегатов прогресса
+// Инвалидация кэшированных агрегатов
 async function purgeProgressCache(base: URL) {
   const cfCache = (globalThis as any)?.caches?.default as Cache | undefined;
   if (!cfCache) return;
@@ -170,7 +168,7 @@ async function handleLogin(env: Env, url: URL) {
   return jsonResp({ success: true, email: u.email, role: u.role, name: u.name });
 }
 
-// GET /getProgress?scope=...
+// GET /getprogress?scope=...
 async function handleGetProgress(env: Env, url: URL) {
   const scope = (url.searchParams.get("scope") || "department").toLowerCase();
   if (scope === "department")     return handleGetDeptProgress(env);
@@ -316,7 +314,7 @@ async function handleGetUsersProgressLastWeek(env: Env) {
 
 // === /bootstrap — единый батч
 async function handleBootstrap(env: Env, url: URL) {
-  // department (как в handleGetDeptProgress)
+  // department
   const now = new Date();
   const { start, end } = getWeekBounds(now);
   const month = now.getMonth();
@@ -369,7 +367,7 @@ async function handleBootstrap(env: Env, url: URL) {
   const dept = { weekSum, monthSum, maxWeek, maxMonth, weeksInMonth, employeesCount, weekPercent, monthPercent };
 
   // users (this_week + month)
-  const yearStr = String(now.getFullYear());
+  const yearStr  = String(now.getFullYear());
   const monthStr = `${now.getMonth() + 1}`.padStart(2, "0");
   const users = await all<{ id: number; name: string; email: string; role: string }>(
     env.DB, `SELECT id, name, email, role FROM users WHERE active=1`
@@ -400,7 +398,7 @@ async function handleBootstrap(env: Env, url: URL) {
     week: weekMap.get(u.id) || 0, month: monthMap.get(u.id) || 0
   }));
 
-  // usersPrevWeek (полная прошлая неделя)
+  // usersPrevWeek
   const { start: prevStart, end: prevEnd } = getLastFullWeekBounds(new Date());
   const prevRows = await all<{ user_id: number; sum: number }>(
     env.DB,
@@ -446,7 +444,7 @@ async function handleGetUserKPIs(env: Env, url: URL) {
   return ok(data);
 }
 
-// GET /recordKPI?userID=&kpiId=&actorEmail[&date=YYYY-MM-DD]
+// GET /recordkpi?userID=&kpiId=&actorEmail[&date=YYYY-MM-DD]
 async function handleRecordKPI(env: Env, url: URL) {
   const userID     = url.searchParams.get("userID");
   const kpiId      = url.searchParams.get("kpiId");
@@ -578,55 +576,44 @@ async function handleProgressDelete(env: Env, url: URL) {
   return ok({ id: Number(idStr) });
 }
 
-// ==== periods helper for leaderboard
-function getRangeByPeriod(period: string): { start: Date; end: Date } | null {
-  const now = new Date();
-  const p = (period || '').toLowerCase();
-  if (p === 'this_week') return getWeekBounds(now);
-  if (p === 'prev_week') return getLastFullWeekBounds(now);
-
-  if (p === 'this_month') {
-    const start = startOfDay(new Date(now.getFullYear(), now.getMonth(), 1));
-    const end   = endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-    return { start, end };
-  }
-  if (p === 'last_month') {
-    const start = startOfDay(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-    const end   = endOfDay(new Date(now.getFullYear(), now.getMonth(), 0));
-    return { start, end };
-  }
-  return null;
-}
-
-// GET /leaderboard?[from=YYYY-MM-DD]&[to=YYYY-MM-DD]&[period=this_week|prev_week|this_month|last_month]&[include_all=0|1]
+// GET /leaderboard?from=YYYY-MM-DD&to=YYYY-MM-DD&include_all=0|1
 async function handleLeaderboard(env: Env, url: URL) {
-  const period = url.searchParams.get('period');
-  let from = url.searchParams.get('from');
-  let to   = url.searchParams.get('to');
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const includeAll = (url.searchParams.get("include_all") || "0") === "1";
 
-  if (!from || !to) {
-    const r = getRangeByPeriod(period || 'this_week') || getWeekBounds(new Date());
-    from = fmtYYYYMMDD(r.start);
-    to   = fmtYYYYMMDD(r.end);
-  }
+  if (!from || !to) return err("from and to required");
 
-  const includeAll = (url.searchParams.get('include_all') || '0') === '1';
-
-  const sql = `
-    SELECT
-      u.id AS user_id,
-      u.name,
-      u.email,
-      u.role,
-      COALESCE(SUM(CASE WHEN p.date BETWEEN ? AND ? THEN p.score ELSE 0 END), 0) AS total
+  const rows = await all<{
+    id: number; name: string; email: string; role: string; sum: number;
+  }>(
+    env.DB,
+    `
+    SELECT u.id AS id, u.name, u.email, u.role,
+           COALESCE(SUM(p.score), 0) AS sum
     FROM users u
-    LEFT JOIN progress p ON p.user_id = u.id
-    ${includeAll ? '' : "WHERE u.active=1 AND lower(u.role)='employee'"}
+    LEFT JOIN progress p
+      ON p.user_id = u.id
+     AND p.date BETWEEN ? AND ?
+    WHERE u.active = 1
     GROUP BY u.id, u.name, u.email, u.role
-    ORDER BY total DESC, u.name ASC
-  `;
-  const rows = await all<any>(env.DB, sql, [from, to]);
-  return ok({ from, to, period: period || null, rows });
+    ORDER BY sum DESC, u.name ASC
+    `,
+    [from, to]
+  );
+
+  const data = rows
+    .filter(r => String(r.role || "").toLowerCase() === "employee")
+    .filter(r => includeAll ? true : Number(r.sum || 0) > 0)
+    .map(r => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      role: r.role,
+      points: Number(r.sum || 0)
+    }));
+
+  return ok(data);
 }
 
 /* =============== маршрутизация ================= */
@@ -672,12 +659,14 @@ export default {
         res = await handleRecordKPI(env, url);
       } else if (route === "/log") {
         res = await handleLog(env, url);
-      } else if (route === "/leaderboard") {
-        res = await handleLeaderboard(env, url);
+      } else if (route === "/bootstrap") {
+        res = await handleBootstrap(env, url);
       } else if (route === "/progress_list") {
         res = await handleProgressList(env, url);
       } else if (route === "/progress_delete") {
         res = await handleProgressDelete(env, url);
+      } else if (route === "/leaderboard") {
+        res = await handleLeaderboard(env, url);
       } else {
         res = err("Invalid action", 400);
       }
