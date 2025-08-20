@@ -1,4 +1,3 @@
-// js/dashboard.js
 import { logEvent, bootstrap as apiBootstrap, leaderboard as apiLeaderboard } from './api.js';
 import {
   createProgressBar,
@@ -7,10 +6,6 @@ import {
   createLoader
 } from './ui-components.js';
 
-/**
- * Рендер дашборда
- * @param {{ID?: string, Email?: string, role: string, Name?: string, name?: string, email?: string}} user
- */
 export async function renderDashboard(user) {
   const userName  = user?.Name || user?.name || user?.Email || user?.email || 'Пользователь';
   const role      = String(user?.role || '').toLowerCase();
@@ -19,7 +14,6 @@ export async function renderDashboard(user) {
 
   app.innerHTML = '';
 
-  // Верхняя панель — единое приветствие + logout
   const title = document.createElement('h2');
   title.textContent = `Добро пожаловать, ${userName}!`;
 
@@ -38,7 +32,6 @@ export async function renderDashboard(user) {
   toolbar.appendChild(logoutBtn);
   app.appendChild(toolbar);
 
-  // Контейнеры секций
   const employeeSection = document.createElement('section'); employeeSection.id = 'employee-section';
   const deptSection     = document.createElement('section'); deptSection.id    = 'dept-section';
   const leaderWeekSec   = document.createElement('section'); leaderWeekSec.id  = 'leader-week';
@@ -56,10 +49,9 @@ export async function renderDashboard(user) {
 
   let lastEmployees = [];
 
-  // helpers
   function getLastFullWeekBounds() {
     const now = new Date();
-    const day = now.getDay(); // 0..6
+    const day = now.getDay();
     const mondayThisWeek = new Date(now);
     const diffToMonday = (day === 0 ? -6 : 1 - day);
     mondayThisWeek.setDate(now.getDate() + diffToMonday);
@@ -75,49 +67,19 @@ export async function renderDashboard(user) {
     return { start, end };
   }
   function fmtDDMM(d) { return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }); }
+
   function buildLeaderWeekHeader() {
     const wrap = document.createElement('div');
     const h4 = document.createElement('h4'); h4.textContent = 'ТОП-3 за неделю';
-    const sub = document.createElement('div'); sub.className = 'text-tertiary caption mt-1';
+    const sub = document.createElement('div'); sub.className = 'text-terтиary caption mt-1';
     const { start, end } = getLastFullWeekBounds();
     sub.textContent = `за прошлую неделю (Пн ${fmtDDMM(start)} — Вс ${fmtDDMM(end)})`;
     wrap.append(h4, sub);
     return wrap;
   }
-  function formatPoints(n) {
-    const num = Number(n || 0);
-    return (Math.round(num * 100) / 100).toString().replace(/\.00$/, '');
-  }
-  function labelTextColorByPoints(points) {
-    const p = Number(points) || 0;
-    // Фон: ≥70 — зелёный; 50–69 — голубой; 30–49 — жёлтый; 0–29 — красный
-    // Контраст: для зелёного/красного — белый; для голубого/жёлтого — чёрный
-    if (p >= 70) return '#fff';
-    if (p >= 50) return '#111';
-    if (p >= 30) return '#111';
-    return '#fff';
-  }
-  function addBarLabel(barEl, points) {
-    const inner = barEl?.querySelector?.('.progress-bar');
-    if (!inner) return;
-    inner.style.position = 'relative';
-    const label = document.createElement('span');
-    label.textContent = formatPoints(points);
-    label.className = 'kpi-bar-label';
-    label.style.position = 'absolute';
-    label.style.right = '8px';
-    label.style.top = '50%';
-    label.style.transform = 'translateY(-50%)';
-    label.style.fontWeight = '700';
-    label.style.fontSize = '14px';
-    label.style.pointerEvents = 'none';
-    label.style.color = labelTextColorByPoints(points);
-    inner.appendChild(label);
-  }
 
   function renderEmployeePanel({ deptData, usersArr }) {
     if (role !== 'employee') return;
-
     const me = Array.isArray(usersArr)
       ? usersArr.find(u => (u.email || '').toLowerCase() === userEmail)
       : null;
@@ -134,49 +96,38 @@ export async function renderDashboard(user) {
 
     const personalWeekPoints  = Number(me.week || 0);
     const personalMonthPoints = Number(me.month || 0);
-    const deptMonthPoints     = Number(deptData?.monthSum || 0);
 
-    // 1) Прогресс отдела — месяц
+    const deptMonthPoints = Number(deptData?.monthSum || 0);
+    const goalPercent     = Number(deptData?.goalPercent ?? Math.min(100, deptMonthPoints));
+    const goalMonth       = Number(deptData?.goalMonth || 100);
+
+    // Прогресс отдела: ширина = % выполнения цели, число = реальные баллы
     {
-      const h = document.createElement('h3'); h.textContent = 'Прогресс отдела (месяц)';
-      const bar = createProgressBar(0, {
+      const h = document.createElement('h3'); h.textContent = `Прогресс отдела (месяц) • цель ${goalMonth}`;
+      const bar = createProgressBar(goalPercent, {
         size: 'department',
-        widthMode: 'points100',
-        widthPoints: Math.min(Math.max(deptMonthPoints, 0), 100),
+        widthMode: 'percent',
         iconMode: 'points',
-        iconValue: deptMonthPoints
+        iconValue: deptMonthPoints,
       });
-      addBarLabel(bar, deptMonthPoints);
       deptSection.innerHTML = '';
       deptSection.append(h, bar);
     }
 
-    // 2) Личные прогрессы — неделя/месяц
-    const grid = document.createElement('div');
-    grid.className = 'row g-4';
+    const grid = document.createElement('div'); grid.className = 'row g-4';
 
     const colWeek = document.createElement('div'); colWeek.className = 'col-12 col-md-6';
     const h4w = document.createElement('h4'); h4w.textContent = 'Ваш прогресс — неделя (текущая)';
-    const barW = createProgressBar(0, {
-      size: 'user',
-      widthMode: 'points100',
-      widthPoints: Math.min(Math.max(personalWeekPoints, 0), 100),
-      iconMode: 'points',
-      iconValue: personalWeekPoints
+    const barW = createProgressBar(Math.min(100, personalWeekPoints), {
+      size: 'user', widthMode: 'percent', iconMode: 'points', iconValue: personalWeekPoints
     });
-    addBarLabel(barW, personalWeekPoints);
     colWeek.append(h4w, barW);
 
     const colMonth = document.createElement('div'); colMonth.className = 'col-12 col-md-6';
     const h4m = document.createElement('h4'); h4m.textContent = 'Ваш прогресс — месяц (текущий)';
-    const barM = createProgressBar(0, {
-      size: 'user',
-      widthMode: 'points100',
-      widthPoints: Math.min(Math.max(personalMonthPoints, 0), 100),
-      iconMode: 'points',
-      iconValue: personalMonthPoints
+    const barM = createProgressBar(Math.min(100, personalMonthPoints), {
+      size: 'user', widthMode: 'percent', iconMode: 'points', iconValue: personalMonthPoints
     });
-    addBarLabel(barM, personalMonthPoints);
     colMonth.append(h4m, barM);
 
     grid.append(colWeek, colMonth);
@@ -198,23 +149,22 @@ export async function renderDashboard(user) {
     if (role === 'employee') {
       renderEmployeePanel({ deptData, usersArr });
     } else {
-      // общий прогресс отдела (месяц)
       const deptMonthPoints = Number(deptData?.monthSum || 0);
+      const goalPercent     = Number(deptData?.goalPercent ?? Math.min(100, deptMonthPoints));
+      const goalMonth       = Number(deptData?.goalMonth || 100);
+
       const deptTitle = document.createElement('h3');
-      deptTitle.textContent = 'Прогресс отдела (месяц)';
-      const bar = createProgressBar(0, {
+      deptTitle.textContent = `Прогресс отдела (месяц) • цель ${goalMonth}`;
+      const bar = createProgressBar(goalPercent, {
         size: 'department',
-        widthMode: 'points100',
-        widthPoints: Math.min(Math.max(deptMonthPoints, 0), 100),
+        widthMode: 'percent',
         iconMode: 'points',
-        iconValue: deptMonthPoints
+        iconValue: deptMonthPoints,
       });
-      addBarLabel(bar, deptMonthPoints);
       deptSection.innerHTML = '';
       deptSection.append(deptTitle, bar);
     }
 
-    // ТОП-3 за прошлую неделю и текущий месяц
     leaderWeekSec.innerHTML = '';
     leaderWeekSec.append(buildLeaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
 
@@ -223,13 +173,11 @@ export async function renderDashboard(user) {
     h4Month.textContent = 'ТОП-3 за месяц';
     leaderMonthSec.append(h4Month, createLeaderboard(employees, 'month'));
 
-    // Таблица сотрудников
     tableSection.innerHTML = '';
     const tableTitle = document.createElement('h4');
     tableTitle.textContent = 'Сотрудники и баллы';
     tableSection.append(tableTitle, createUsersTable(employees));
 
-    // Для админа — секция детального рейтинга
     if (role === 'admin' && !document.getElementById('rating-section')) {
       renderRatingSection(app);
     }
@@ -242,12 +190,11 @@ export async function renderDashboard(user) {
     try { loader.remove(); } catch {}
   }
 
-  // Слушаем событие из админ-панели
-  document.addEventListener('kpi:recorded', async () => {
-    await refreshDashboardData();
-  });
+  // обновление по событиям
+  document.addEventListener('kpi:recorded', async () => { await refreshDashboardData(); });
+  // ← слушаем изменение настроек (глобальная цель)
+  document.addEventListener('settings:changed', async () => { await refreshDashboardData(); });
 
-  // Подключаем админ-панель в конце
   if (role === 'admin') {
     const adminModule = await import('./admin-panel.js');
     app.append(adminModule.createAdminPanel(lastEmployees));
@@ -294,58 +241,30 @@ export async function renderDashboard(user) {
     const toInp   = card.querySelector('#rt-to');
     const tbl     = card.querySelector('#rt-table');
 
-    function setDateRange(from, to) {
-      fromInp.value = from;
-      toInp.value   = to;
-    }
+    function setDateRange(from, to) { fromInp.value = from; toInp.value = to; }
     function fmt(d) {
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,'0');
-      const dd= String(d.getDate()).padStart(2,'0');
+      const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd= String(d.getDate()).padStart(2,'0');
       return `${y}-${m}-${dd}`;
     }
     function weekBounds(date) {
-      const d = new Date(date);
-      const day = d.getDay();
+      const d = new Date(date), day = d.getDay();
       const diffToMon = day === 0 ? -6 : 1 - day;
       const mon = new Date(d); mon.setDate(d.getDate() + diffToMon); mon.setHours(0,0,0,0);
       const sun = new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
       return { from: fmt(mon), to: fmt(sun) };
     }
-    function thisMonth() {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const end   = new Date(now.getFullYear(), now.getMonth()+1, 0);
-      return { from: fmt(start), to: fmt(end) };
-    }
-    function lastMonth() {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth()-1, 1);
-      const end   = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { from: fmt(start), to: fmt(end) };
-    }
+    function thisMonth() { const now = new Date(); return { from: fmt(new Date(now.getFullYear(), now.getMonth(), 1)), to: fmt(new Date(now.getFullYear(), now.getMonth()+1, 0)) }; }
+    function lastMonth() { const now = new Date(); return { from: fmt(new Date(now.getFullYear(), now.getMonth()-1, 1)), to: fmt(new Date(now.getFullYear(), now.getMonth(), 0)) }; }
 
-    // дефолт — прошлая полная неделя
     const wNow = weekBounds(new Date());
     const prevStart = new Date(wNow.from); prevStart.setDate(prevStart.getDate()-7);
     const prev = weekBounds(prevStart);
     setDateRange(prev.from, prev.to);
 
-    card.querySelector('#rt-this-week').addEventListener('click', () => {
-      const w = weekBounds(new Date());
-      setDateRange(w.from, w.to);
-    });
-    card.querySelector('#rt-prev-week').addEventListener('click', () => {
-      setDateRange(prev.from, prev.to);
-    });
-    card.querySelector('#rt-this-month').addEventListener('click', () => {
-      const m = thisMonth();
-      setDateRange(m.from, m.to);
-    });
-    card.querySelector('#rt-last-month').addEventListener('click', () => {
-      const m = lastMonth();
-      setDateRange(m.from, m.to);
-    });
+    card.querySelector('#rt-this-week').addEventListener('click', () => setDateRange(...Object.values(weekBounds(new Date()))));
+    card.querySelector('#rt-prev-week').addEventListener('click', () => setDateRange(prev.from, prev.to));
+    card.querySelector('#rt-this-month').addEventListener('click', () => { const m = thisMonth(); setDateRange(m.from, m.to); });
+    card.querySelector('#rt-last-month').addEventListener('click', () => { const m = lastMonth(); setDateRange(m.from, m.to); });
 
     async function renderTable() {
       tbl.innerHTML = `
@@ -355,9 +274,7 @@ export async function renderDashboard(user) {
         </div>
       `;
       try {
-        const res = await apiLeaderboard({ from: fromInp.value, to: toInp.value, includeAll: false, });
-        const rows = Array.isArray(res?.data) ? res.data
-                   : (Array.isArray(res) ? res: []);
+        const rows = await apiLeaderboard({ from: fromInp.value, to: toInp.value, includeAll: false });
         if (!rows.length) {
           tbl.innerHTML = `<div class="text-secondary">Нет данных за период.</div>`;
           return;
@@ -392,14 +309,11 @@ export async function renderDashboard(user) {
         tbl.innerHTML = '';
         tbl.appendChild(table);
 
-        // экспорт CSV
         card.querySelector('#rt-export').onclick = () => {
           const header = ['#', 'Name', 'Email', 'Score'];
           const csv = [
             header.join(','),
-            ...rows.map((r, i) =>
-              [i+1, quoteCsv(r.name||''), quoteCsv(r.email||''), Number(r.points||0)].join(',')
-            )
+            ...rows.map((r, i) => [i+1, quoteCsv(r.name||''), quoteCsv(r.email||''), Number(r.points||0)].join(','))
           ].join('\n');
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
           const a = document.createElement('a');
@@ -419,4 +333,3 @@ export async function renderDashboard(user) {
     renderTable();
   }
 }
-// без авто-инициализации — вызывается из auth.js

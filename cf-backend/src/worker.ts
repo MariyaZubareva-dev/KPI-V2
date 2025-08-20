@@ -4,6 +4,8 @@
 // Роуты: /ping, /login, /getprogress, /recordkpi, /log, /bootstrap,
 //        /leaderboard, /progress_list, /progress_delete,
 //        /kpi_list, /kpi_create, /kpi_update, /kpi_delete
+//        /settings_get, /settings_set
+//        /users_list, /user_create, /user_update, /user_delete
 
 export interface Env {
   DB: D1Database;
@@ -148,6 +150,18 @@ async function purgeProgressCache(base: URL) {
   );
 }
 
+/* ============ settings helpers ============ */
+async function getSetting(env: Env, key: string): Promise<string | null> {
+  const row = await one<{ value: string }>(env.DB, `SELECT value FROM settings WHERE key=?`, [key]);
+  return row?.value ?? null;
+}
+async function setSetting(env: Env, key: string, value: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO settings(key,value) VALUES(?,?)
+     ON CONFLICT(key) DO UPDATE SET value=excluded.value`
+  ).bind(key, value).run();
+}
+
 /* ================ handlers ================= */
 
 async function handlePing() { return ok({ ok: true, pong: true }); }
@@ -232,7 +246,16 @@ async function handleGetDeptProgress(env: Env) {
   const weekPercent  = Math.min(100, Math.round((weekSum  / (maxWeek  || 1)) * 100));
   const monthPercent = Math.min(100, Math.round((monthSum / (maxMonth || 1)) * 100));
 
-  return ok({ weekSum, monthSum, maxWeek, maxMonth, weeksInMonth, employeesCount, weekPercent, monthPercent });
+  // Глобальная цель на месяц
+  const goalStr = await getSetting(env, "month_goal");
+  const goalMonth = Math.max(1, Number(goalStr || "100")); // страховка
+  const goalPercent = Math.min(100, Math.round((monthSum / goalMonth) * 100));
+
+  return ok({
+    weekSum, monthSum, maxWeek, maxMonth, weeksInMonth, employeesCount,
+    weekPercent, monthPercent,
+    goalMonth, goalPercent
+  });
 }
 
 // helper: ISO week number
@@ -366,7 +389,16 @@ async function handleBootstrap(env: Env, url: URL) {
   const weekPercent  = Math.min(100, Math.round((weekSum  / (maxWeek  || 1)) * 100));
   const monthPercent = Math.min(100, Math.round((monthSum / (maxMonth || 1)) * 100));
 
-  const dept = { weekSum, monthSum, maxWeek, maxMonth, weeksInMonth, employeesCount, weekPercent, monthPercent };
+  // цель месяца
+  const goalStr = await getSetting(env, "month_goal");
+  const goalMonth = Math.max(1, Number(goalStr || "100"));
+  const goalPercent = Math.min(100, Math.round((monthSum / goalMonth) * 100));
+
+  const dept = {
+    weekSum, monthSum, maxWeek, maxMonth, weeksInMonth, employeesCount,
+    weekPercent, monthPercent,
+    goalMonth, goalPercent
+  };
 
   // users (this_week + month)
   const yearStr  = String(now.getFullYear());
@@ -656,7 +688,6 @@ async function handleKpiCreate(env: Env, url: URL) {
     .bind(name, weight).run();
   await logEvent(env, "kpi_created", actorEmail, null, null, weight, { name });
 
-  // изменить веса => инвалидация агрегатов
   await purgeProgressCache(url);
   return ok({ name, weight });
 }
@@ -705,6 +736,135 @@ async function handleKpiDelete(env: Env, url: URL) {
   await logEvent(env, "kpi_deleted", actorEmail, null, id, null, null);
 
   await purgeProgressCache(url);
+  return ok({ id, active: 0 });
+}
+
+/* ---------- SETTINGS ---------- */
+
+// GET /settings_get?key=month_goal
+async function handleSettingsGet(env: Env, url: URL) {
+  const key = (url.searchParams.get("key") || "").trim();
+  if (!key) return err("key required");
+  const value = await getSetting(env, key);
+  return ok({ key, value });
+}
+
+// GET /settings_set?key=&value=&actorEmail=
+async function handleSettingsSet(env: Env, url: URL) {
+  const key = (url.searchParams.get("key") || "").trim();
+  const value = (url.searchParams.get("value") || "").trim();
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!key)   return err("key required");
+  if (!value) return err("value required");
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    return err("forbidden: only admin can set settings", 403);
+  }
+
+  await setSetting(env, key, value);
+  await logEvent(env, "settings_updated", actorEmail, null, null, null, { key, value });
+  await purgeProgressCache(url);
+  return ok({ key, value });
+}
+
+/* ---------- USERS CRUD ---------- */
+
+// GET /users_list?include_inactive=0|1
+async function handleUsersList(env: Env, url: URL) {
+  const includeInactive = (url.searchParams.get("include_inactive") || "0") === "1";
+  const rows = await all<{id:number;name:string;email:string;role:string;active:number;manager_id:number|null}>(
+    env.DB,
+    `SELECT id, name, email, role, active, manager_id
+     FROM users
+     ${includeInactive ? "" : "WHERE active=1"}
+     ORDER BY active DESC, lower(role)='admin' DESC, name ASC`
+  );
+  return ok(rows);
+}
+
+// GET /user_create?name=&email=&role=&manager_id=&actorEmail=
+async function handleUserCreate(env: Env, url: URL) {
+  const name = (url.searchParams.get("name") || "").trim();
+  const email = (url.searchParams.get("email") || "").trim().toLowerCase();
+  const role = (url.searchParams.get("role") || "employee").trim().toLowerCase();
+  const managerId = url.searchParams.get("manager_id");
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!name || !email) return err("name and email required");
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    return err("forbidden: only admin can create user", 403);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO users (name, email, role, active, manager_id) VALUES (?, ?, ?, 1, ?)`
+  ).bind(name, email, role, managerId ? Number(managerId) : null).run();
+
+  await logEvent(env, "user_created", actorEmail, null, null, null, { name, email, role, managerId });
+  return ok({ name, email, role, manager_id: managerId ? Number(managerId) : null, active: 1 });
+}
+
+// GET /user_update?id=&name=&email=&role=&active=&manager_id=&actorEmail=
+async function handleUserUpdate(env: Env, url: URL) {
+  const id = Number(url.searchParams.get("id") || "0");
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!(id>0)) return err("id required");
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    return err("forbidden: only admin can update user", 403);
+  }
+
+  const fields: string[] = [];
+  const bind: any[] = [];
+  const add = (sql: string, v: any) => { fields.push(sql); bind.push(v); };
+
+  const name = url.searchParams.get("name");
+  const email = url.searchParams.get("email");
+  const role  = url.searchParams.get("role");
+  const activeStr = url.searchParams.get("active");
+  const managerId = url.searchParams.get("manager_id");
+
+  if (name !== null && name !== undefined) add("name=?", name.trim());
+  if (email !== null && email !== undefined) add("email=?", email.trim().toLowerCase());
+  if (role !== null && role !== undefined) add("role=?", role.trim().toLowerCase());
+  if (activeStr !== null && activeStr !== undefined) add("active=?", (activeStr === "1" ? 1 : 0));
+  if (managerId !== null && managerId !== undefined) add("manager_id=?", managerId ? Number(managerId) : null);
+
+  if (!fields.length) return err("no fields to update");
+
+  bind.push(id);
+  await env.DB.prepare(`UPDATE users SET ${fields.join(", ")} WHERE id=?`).bind(...bind).run();
+  await logEvent(env, "user_updated", actorEmail, id, null, null, { fields });
+  return ok({ id });
+}
+
+// GET /user_delete?id=&actorEmail=
+async function handleUserDelete(env: Env, url: URL) {
+  const id = Number(url.searchParams.get("id") || "0");
+  const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
+  if (!(id>0)) return err("id required");
+  if (!actorEmail) return err("forbidden: actorEmail required", 403);
+
+  const admin = await one<{ role: string }>(
+    env.DB, `SELECT role FROM users WHERE lower(email)=? AND active=1 LIMIT 1`, [actorEmail]
+  );
+  if (!admin || (admin.role || "").toLowerCase() !== "admin") {
+    return err("forbidden: only admin can delete user", 403);
+  }
+
+  await env.DB.prepare(`UPDATE users SET active=0 WHERE id=?`).bind(id).run();
+  await logEvent(env, "user_deleted", actorEmail, id, null, null, null);
   return ok({ id, active: 0 });
 }
 
@@ -767,6 +927,18 @@ export default {
         res = await handleKpiUpdate(env, url);
       } else if (route === "/kpi_delete") {
         res = await handleKpiDelete(env, url);
+      } else if (route === "/settings_get") {
+        res = await handleSettingsGet(env, url);
+      } else if (route === "/settings_set") {
+        res = await handleSettingsSet(env, url);
+      } else if (route === "/users_list") {
+        res = await handleUsersList(env, url);
+      } else if (route === "/user_create") {
+        res = await handleUserCreate(env, url);
+      } else if (route === "/user_update") {
+        res = await handleUserUpdate(env, url);
+      } else if (route === "/user_delete") {
+        res = await handleUserDelete(env, url);
       } else {
         res = err("Invalid action", 400);
       }

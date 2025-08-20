@@ -8,11 +8,14 @@ import {
   kpiList,
   kpiCreate,
   kpiUpdate,
-  kpiDelete
+  kpiDelete,
+  // ← добавили API настроек
+  settingsGet,
+  settingsSet
 } from './api.js';
 
 /**
- * Admin-панель (отметка KPI, история, CRUD задач)
+ * Admin-панель (отметка KPI, история, CRUD задач, настройки)
  * @param {Array<{id:number, name:string, email:string, role:string}>} usersData
  */
 export function createAdminPanel(usersData = []) {
@@ -149,6 +152,28 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(kpiCrudCard);
 
+  // === НАСТРОЙКИ (глобальная цель) ===
+  const settingsCard = document.createElement('div');
+  settingsCard.className = 'card mt-4';
+  settingsCard.innerHTML = `
+    <div class="card-body">
+      <h5 class="card-title mb-3">Настройки</h5>
+      <div class="row g-2 align-items-end">
+        <div class="col-8 col-md-4">
+          <label class="form-label mb-1">Глобальная цель на месяц (баллы)</label>
+          <input type="number" step="1" min="1" class="form-control" id="set-month-goal" placeholder="100" />
+        </div>
+        <div class="col-4 col-md-2 d-grid">
+          <button class="btn btn-primary" id="set-month-goal-save">Сохранить</button>
+        </div>
+        <div class="col-12 col-md-6 text-secondary small">
+          Цель используется для верхнего прогресс-бара отдела: % = текущие баллы / цель × 100%.
+        </div>
+      </div>
+    </div>
+  `;
+  container.appendChild(settingsCard);
+
   // refs
   const kpiListBox   = colLeft.querySelector('#ap-kpi-list');
   const histBox      = colRight.querySelector('#ap-history');
@@ -160,7 +185,10 @@ export function createAdminPanel(usersData = []) {
   const kpiCrudList  = kpiCrudCard.querySelector('#kpi-crud-list');
   const kpiNewName   = kpiCrudCard.querySelector('#kpi-new-name');
   const kpiNewWeight = kpiCrudCard.querySelector('#kpi-new-weight');
-  const kpiAddBtn    = kpiCrudCard.querySelector('#kpi-new-add'); // ← ОДНО объявление
+  const kpiAddBtn    = kpiCrudCard.querySelector('#kpi-new-add'); // ← одно объявление
+
+  const goalInput = settingsCard.querySelector('#set-month-goal');
+  const goalSave  = settingsCard.querySelector('#set-month-goal-save');
 
   // === Вспомогательные ===
   function getActorEmail() {
@@ -490,6 +518,38 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
+  // === Настройки: загрузка и сохранение цели ===
+  async function loadSettings() {
+    try {
+      const r = await settingsGet('month_goal');
+      const v = Number(r?.value ?? r ?? 100);
+      goalInput.value = String(v > 0 ? Math.round(v) : 100);
+    } catch (e) {
+      console.error('settingsGet failed', e);
+      goalInput.value = '100';
+    }
+  }
+
+  goalSave.addEventListener('click', async () => {
+    const actorEmail = getActorEmail();
+    if (!actorEmail) { alert('Нет email администратора (перелогиньтесь).'); return; }
+    let v = Number(goalInput.value);
+    if (!Number.isFinite(v) || v <= 0) { alert('Укажите цель > 0'); return; }
+    v = Math.round(v);
+    goalSave.disabled = true;
+    try {
+      await settingsSet('month_goal', String(v), actorEmail);
+      try { await logEvent('settings_updated_ui', { key: 'month_goal', value: v, actorEmail }); } catch {}
+      // уведомим дашборд — он перезагрузит агрегаты
+      document.dispatchEvent(new CustomEvent('settings:changed', { detail: { key: 'month_goal', value: v }}));
+    } catch (e) {
+      console.error(e);
+      alert('Не удалось сохранить цель.');
+    } finally {
+      goalSave.disabled = false;
+    }
+  });
+
   // === События и первичная отрисовка ===
   async function refreshAll() {
     const userId = userSel.value;
@@ -497,6 +557,7 @@ export function createAdminPanel(usersData = []) {
       renderKpiListFor(userId),
       renderHistoryFor(userId),
       renderKpiCrudList(kpiCrudList),
+      loadSettings()
     ]);
   }
 
