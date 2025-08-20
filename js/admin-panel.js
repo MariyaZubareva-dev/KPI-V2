@@ -10,11 +10,11 @@ import {
   kpiUpdate,
   kpiDelete,
   settingsGet,
-  settingsSet,
+  settingsSet
 } from './api.js';
 
 /**
- * Admin-панель (отметка KPI, история, CRUD задач, НАСТРОЙКИ)
+ * Admin-панель (отметка KPI, история, CRUD задач, настройки)
  * @param {Array<{id:number, name:string, email:string, role:string}>} usersData
  */
 export function createAdminPanel(usersData = []) {
@@ -37,17 +37,17 @@ export function createAdminPanel(usersData = []) {
   controlsCard.className = 'card mb-4';
   controlsCard.innerHTML = `
     <div class="card-body">
-      <div class="row g-3 align-items-end">
+      <div class="row g-3 align-items-end toolbar-sm">
         <div class="col-12 col-md-5">
           <label class="form-label mb-1">Сотрудник</label>
-          <select class="form-select" id="ap-user"></select>
+          <select class="form-select form-select-sm" id="ap-user"></select>
         </div>
         <div class="col-8 col-md-3">
           <label class="form-label mb-1">Дата отметки</label>
-          <input type="date" class="form-control" id="ap-date" />
+          <input type="date" class="form-control form-control-sm" id="ap-date" />
         </div>
         <div class="col-4 col-md-2 d-grid">
-          <button class="btn btn-outline-secondary" id="ap-refresh">Обновить</button>
+          <button class="btn btn-outline-secondary btn-sm" id="ap-refresh">Обновить</button>
         </div>
       </div>
     </div>
@@ -84,9 +84,9 @@ export function createAdminPanel(usersData = []) {
   const twoCol = document.createElement('div');
   twoCol.className = 'row';
 
-  // Левая колонка — список KPI / отметка
+  // Левая колонка — список KPI / отметка (немного шире)
   const colLeft = document.createElement('div');
-  colLeft.className = 'col-12 col-lg-6';
+  colLeft.className = 'col-12 col-lg-7';
   colLeft.innerHTML = `
     <div class="card">
       <div class="card-body">
@@ -96,26 +96,26 @@ export function createAdminPanel(usersData = []) {
     </div>
   `;
 
-  // Правая колонка — история
+  // Правая колонка — история (чуть уже)
   const colRight = document.createElement('div');
-  colRight.className = 'col-12 col-lg-6';
+  colRight.className = 'col-12 col-lg-5';
   colRight.innerHTML = `
     <div class="card">
       <div class="card-body">
         <h5 class="card-title mb-3">История отметок</h5>
-        <div class="row g-2 mb-2">
+        <div class="row g-2 mb-2 toolbar-sm">
           <div class="col-6">
-            <input type="date" class="form-control" id="ap-hist-from" placeholder="с (необязательно)"/>
+            <input type="date" class="form-control form-control-sm" id="ap-hist-from" placeholder="с (необязательно)"/>
           </div>
           <div class="col-6">
-            <input type="date" class="form-control" id="ap-hist-to" placeholder="по (необязательно)"/>
+            <input type="date" class="form-control form-control-sm" id="ap-hist-to" placeholder="по (необязательно)"/>
           </div>
           <div class="col-12 d-flex gap-2">
             <button class="btn btn-outline-secondary btn-sm" id="ap-hist-apply">Применить фильтр</button>
             <button class="btn btn-outline-secondary btn-sm" id="ap-hist-clear">Сбросить</button>
           </div>
         </div>
-        <div id="ap-history"></div>
+        <div id="ap-history" class="narrow-wrap"></div>
       </div>
     </div>
   `;
@@ -131,17 +131,17 @@ export function createAdminPanel(usersData = []) {
       <h5 class="card-title mb-3">Задачи (KPI)</h5>
 
       <div class="border rounded p-3 mb-3">
-        <div class="row g-2 align-items-end">
+        <div class="row g-2 align-items-end toolbar-sm">
           <div class="col-12 col-md-6">
             <label class="form-label mb-1">Название новой задачи</label>
-            <input type="text" class="form-control" id="kpi-new-name" placeholder="Например: Отправить недельный отчёт" />
+            <input type="text" class="form-control form-control-sm" id="kpi-new-name" placeholder="Например: Отправить недельный отчёт" />
           </div>
           <div class="col-6 col-md-3">
             <label class="form-label mb-1">Баллы</label>
-            <input type="number" step="0.01" min="0.01" class="form-control" id="kpi-new-weight" placeholder="0.25" />
+            <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" id="kpi-new-weight" placeholder="0.25" />
           </div>
           <div class="col-6 col-md-3 d-grid">
-            <button class="btn btn-success" id="kpi-new-add">Создать</button>
+            <button class="btn btn-success btn-sm" id="kpi-new-add">Создать</button>
           </div>
         </div>
       </div>
@@ -151,43 +151,37 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(kpiCrudCard);
 
-  // === НАСТРОЙКИ (глобальная цель + политика повторов) ===
+  // === Настройки (глобальная цель + политики) ===
   const settingsCard = document.createElement('div');
   settingsCard.className = 'card mt-4';
   settingsCard.innerHTML = `
     <div class="card-body">
       <h5 class="card-title mb-3">Настройки</h5>
-      <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-4">
-          <label class="form-label mb-1">Глобальная цель (месяц), баллы</label>
-          <input type="number" min="1" step="1" class="form-control" id="st-goal" placeholder="100" />
+      <div class="row g-3 align-items-end toolbar-sm">
+        <div class="col-6 col-md-3">
+          <label class="form-label mb-1">Цель месяца</label>
+          <input type="number" min="1" step="1" class="form-control form-control-sm" id="st-goal" placeholder="100" />
         </div>
-
-        <div class="col-12 col-md-4">
+        <div class="col-6 col-md-3">
           <label class="form-label mb-1">Политика повторов</label>
-          <select class="form-select" id="st-policy">
-            <option value="per_day">1 отметка в день</option>
-            <option value="per_week">1 отметка в неделю</option>
+          <select class="form-select form-select-sm" id="st-policy">
             <option value="none">Без ограничений</option>
-          </select>
-          <div class="text-secondary small mt-1">
-            Сервер учитывает политику при записи KPI (409 при нарушении).
-          </div>
-        </div>
-
-        <div class="col-12 col-md-4">
-          <label class="form-label mb-1">Охват</label>
-          <select class="form-select" id="st-scope">
-            <option value="per_kpi">На каждый KPI отдельно</option>
-            <option value="global">Глобально (любой KPI)</option>
+            <option value="per_day">Не более 1 в день</option>
+            <option value="per_week">Не более 1 в неделю</option>
           </select>
         </div>
-
-        <div class="col-12 d-flex gap-2">
-          <button class="btn btn-primary" id="st-save">Сохранить</button>
-          <span class="text-secondary small" id="st-status" aria-live="polite"></span>
+        <div class="col-6 col-md-3">
+          <label class="form-label mb-1">Область политики</label>
+          <select class="form-select form-select-sm" id="st-scope">
+            <option value="per_kpi">Для каждого KPI</option>
+            <option value="global">Глобально (на любые KPI)</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-3 d-grid">
+          <button class="btn btn-primary btn-sm" id="st-save">Сохранить</button>
         </div>
       </div>
+      <div id="st-hint" class="mt-2 text-secondary small d-none"></div>
     </div>
   `;
   container.appendChild(settingsCard);
@@ -210,7 +204,6 @@ export function createAdminPanel(usersData = []) {
   const stPolicy = settingsCard.querySelector('#st-policy');
   const stScope  = settingsCard.querySelector('#st-scope');
   const stSave   = settingsCard.querySelector('#st-save');
-  const stStatus = settingsCard.querySelector('#st-status');
 
   // === Вспомогательные ===
   function getActorEmail() {
@@ -227,7 +220,7 @@ export function createAdminPanel(usersData = []) {
     return `${y}-${m}-${day}`;
   }
 
-  // === Рендер списка KPI для отметки ===
+  // === Рендер списка KPI для отметки (таблица) ===
   async function renderKpiListFor(userId) {
     kpiListBox.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
@@ -248,29 +241,40 @@ export function createAdminPanel(usersData = []) {
         return;
       }
 
-      const list = document.createElement('div');
-      list.className = 'list-group';
+      const table = document.createElement('table');
+      table.className = 'table table-hover table-compact align-middle';
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Задача</th>
+            <th style="width:110px;">Баллы</th>
+            <th style="width:140px;">Дата</th>
+            <th style="width:220px;">Статус</th>
+            <th style="width:1%; white-space:nowrap;">Действие</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      `;
+      const tbody = table.querySelector('tbody');
 
       kpis.forEach(kpi => {
-        const row = document.createElement('div');
-        row.className = 'list-group-item d-flex align-items-center justify-content-between';
+        const tr = document.createElement('tr');
 
-        const left = document.createElement('div');
-        left.className = 'd-flex flex-column';
-        const nm = document.createElement('div');
-        nm.innerHTML = `<strong>${kpi.name}</strong>`;
-        const sub = document.createElement('div');
-        sub.className = 'text-secondary small';
-        sub.textContent = `Баллы: ${kpi.weight} ${kpi.done ? ' • уже отмечено на этой неделе' : ''}`;
-        left.append(nm, sub);
+        const tdName = document.createElement('td');
+        tdName.innerHTML = `<strong>${kpi.name}</strong>`;
 
-        const right = document.createElement('div');
-        right.className = 'd-flex align-items-center gap-2';
+        const tdWeight = document.createElement('td');
+        tdWeight.textContent = String(kpi.weight ?? 0);
 
-        const dateHint = document.createElement('span');
-        dateHint.className = 'text-secondary small d-none d-md-inline';
-        dateHint.textContent = `дата: ${selectedDate}`;
+        const tdDate = document.createElement('td');
+        tdDate.textContent = selectedDate; // только дата, без «дата:»
 
+        const tdStatus = document.createElement('td');
+        tdStatus.innerHTML = kpi.done
+          ? `<span class="status-done small">уже отмечено на этой неделе</span>`
+          : `<span class="text-tertiary small">ещё не отмечено</span>`;
+
+        const tdAction = document.createElement('td');
         const btn = document.createElement('button');
         btn.className = 'btn btn-primary btn-sm';
         btn.textContent = 'Отметить';
@@ -284,7 +288,7 @@ export function createAdminPanel(usersData = []) {
               userID: String(userId),
               kpiId: String(kpi.KPI_ID),
               actorEmail,
-              date: dateInp.value || selectedDate, // «задним числом»
+              date: dateInp.value || selectedDate,
             });
 
             try {
@@ -297,33 +301,25 @@ export function createAdminPanel(usersData = []) {
               });
             } catch {}
 
-            await Promise.all([
-              renderKpiListFor(userId),
-              renderHistoryFor(userId),
-            ]);
+            await Promise.all([ renderKpiListFor(userId), renderHistoryFor(userId) ]);
 
             document.dispatchEvent(new CustomEvent('kpi:recorded', {
               detail: { userID: String(userId), kpiId: String(kpi.KPI_ID) }
             }));
           } catch (e) {
-            // 409 = нарушена политика повторов (сервер вернул Conflict)
-            if (String(e?.message || '').includes('409')) {
-              alert('Нельзя отметить повторно в выбранный период согласно политике повторов.');
-            } else {
-              console.error(e);
-              alert('Не удалось записать KPI. Подробности — в консоли.');
-            }
+            console.error(e);
+            alert('Не удалось записать KPI. Подробности — в консоли.');
           } finally {
             btn.disabled = false;
           }
         });
 
-        right.append(dateHint, btn);
-        row.append(left, right);
-        list.appendChild(row);
+        tdAction.appendChild(btn);
+        tr.append(tdName, tdWeight, tdDate, tdStatus, tdAction);
+        tbody.appendChild(tr);
       });
 
-      kpiListBox.appendChild(list);
+      kpiListBox.appendChild(table);
     } catch (e) {
       console.error('Ошибка загрузки KPI пользователя:', e);
       kpiListBox.innerHTML = `<div class="alert alert-danger">Не удалось загрузить список KPI.</div>`;
@@ -355,11 +351,11 @@ export function createAdminPanel(usersData = []) {
       }
 
       const table = document.createElement('table');
-      table.className = 'table table-sm table-striped align-middle';
+      table.className = 'table table-striped table-compact table-xs align-middle';
       table.innerHTML = `
         <thead>
           <tr>
-            <th style="width:115px;">Дата</th>
+            <th style="width:110px;">Дата</th>
             <th>Задача</th>
             <th style="width:90px;">Баллы</th>
             <th style="width:1%; white-space:nowrap;"></th>
@@ -397,9 +393,9 @@ export function createAdminPanel(usersData = []) {
             try { await logEvent('progress_deleted_ui', { id: r.id, actorEmail }); } catch {}
             await Promise.all([
               renderHistoryFor(userId),
-              renderKpiListFor(userId),
+              renderKpiListFor(userId), // на случай, если удалили отметку текущей недели
             ]);
-            document.dispatchEvent(new CustomEvent('kpi:recorded'));
+            document.dispatchEvent(new CustomEvent('kpi:recorded')); // чтобы дашборд пересчитался
           } catch (e) {
             console.error(e);
             alert('Не удалось удалить запись.');
@@ -437,7 +433,7 @@ export function createAdminPanel(usersData = []) {
       }
 
       const table = document.createElement('table');
-      table.className = 'table table-sm align-middle';
+      table.className = 'table table-sm align-middle table-compact';
       table.innerHTML = `
         <thead>
           <tr>
@@ -457,7 +453,7 @@ export function createAdminPanel(usersData = []) {
         const nameTd = document.createElement('td');
         const nameInput = document.createElement('input');
         nameInput.type = 'text';
-        nameInput.className = 'form-control';
+        nameInput.className = 'form-control form-control-sm';
         nameInput.value = r.name || '';
         nameTd.appendChild(nameInput);
 
@@ -466,7 +462,7 @@ export function createAdminPanel(usersData = []) {
         wInput.type = 'number';
         wInput.step = '0.01';
         wInput.min = '0.01';
-        wInput.className = 'form-control';
+        wInput.className = 'form-control form-control-sm';
         wInput.value = String(r.weight ?? 0);
         wTd.appendChild(wInput);
 
@@ -543,24 +539,23 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-  // === Настройки: загрузка/сохранение ===
+  // === Настройки: рендер/загрузка/сохранение ===
   async function loadSettings() {
     try {
       const goalResp = await settingsGet('month_goal');
       const policyResp = await settingsGet('repeat_policy');
       const scopeResp  = await settingsGet('repeat_scope');
 
-      const goalVal = Number(goalResp?.value ?? goalResp ?? 100) || 100;
-      stGoal.value = String(Math.max(1, Math.round(goalVal)));
+      const goalVal = Number(goalResp?.value ?? goalResp ?? 100);
+      stGoal.value = String(goalVal || 100);
 
-      stPolicy.value = String(policyResp?.value ?? policyResp ?? 'per_day');
-      stScope.value  = String(scopeResp?.value  ?? scopeResp  ?? 'per_kpi');
+      const policyVal = String(policyResp?.value ?? policyResp ?? 'none');
+      stPolicy.value = policyVal;
+
+      const scopeVal = String(scopeResp?.value ?? scopeResp ?? 'per_kpi');
+      stScope.value = scopeVal;
     } catch (e) {
       console.error('settingsGet failed', e);
-      // заполним дефолтами
-      stGoal.value = '100';
-      stPolicy.value = 'per_day';
-      stScope.value = 'per_kpi';
     }
   }
 
@@ -568,27 +563,21 @@ export function createAdminPanel(usersData = []) {
     const actorEmail = getActorEmail();
     if (!actorEmail) { alert('Нет email администратора (перелогиньтесь).'); return; }
 
-    const goal = Math.max(1, Number(stGoal.value || 100) || 100);
-    const policy = String(stPolicy.value || 'per_day');
-    const scope  = String(stScope.value  || 'per_kpi');
+    const goal = Math.max(1, Number(stGoal.value || 0));
+    const policy = String(stPolicy.value || 'none');
+    const scope  = String(stScope.value || 'per_kpi');
 
-    stSave.disabled = true;
-    stStatus.textContent = 'Сохраняем…';
     try {
-      await settingsSet('month_goal', String(goal), actorEmail);
-      await settingsSet('repeat_policy', policy, actorEmail);
-      await settingsSet('repeat_scope', scope, actorEmail);
-      stStatus.textContent = 'Сохранено';
-      try { await logEvent('settings_saved_ui', { goal, policy, scope, actorEmail }); } catch {}
-      // уведомим остальные части UI
-      document.dispatchEvent(new CustomEvent('settings:changed'));
+      await Promise.all([
+        settingsSet('month_goal', String(goal), actorEmail),
+        settingsSet('repeat_policy', policy, actorEmail),
+        settingsSet('repeat_scope', scope, actorEmail),
+      ]);
+      alert('Настройки сохранены');
+      document.dispatchEvent(new CustomEvent('kpi:changed'));
     } catch (e) {
       console.error(e);
-      stStatus.textContent = 'Ошибка';
       alert('Не удалось сохранить настройки.');
-    } finally {
-      stSave.disabled = false;
-      setTimeout(() => { stStatus.textContent = ''; }, 2000);
     }
   });
 
@@ -599,7 +588,7 @@ export function createAdminPanel(usersData = []) {
       renderKpiListFor(userId),
       renderHistoryFor(userId),
       renderKpiCrudList(kpiCrudList),
-      loadSettings(), // ← загрузим настройки
+      loadSettings(),
     ]);
   }
 

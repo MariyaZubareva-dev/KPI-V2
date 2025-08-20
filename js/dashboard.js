@@ -190,10 +190,7 @@ export async function renderDashboard(user) {
     try { loader.remove(); } catch {}
   }
 
-  // обновление по событиям
   document.addEventListener('kpi:recorded', async () => { await refreshDashboardData(); });
-  // ← слушаем изменение настроек (глобальная цель)
-  document.addEventListener('settings:changed', async () => { await refreshDashboardData(); });
 
   if (role === 'admin') {
     const adminModule = await import('./admin-panel.js');
@@ -212,21 +209,21 @@ export async function renderDashboard(user) {
     card.innerHTML = `
       <div class="card-body">
         <h4 class="card-title mb-3">Детальная таблица рейтинга</h4>
-        <div class="row g-2 align-items-end mb-3">
+        <div class="row g-2 align-items-end toolbar-sm mb-3">
           <div class="col-6 col-md-3">
             <label class="form-label mb-1">С</label>
-            <input type="date" class="form-control" id="rt-from" />
+            <input type="date" class="form-control form-control-sm" id="rt-from" />
           </div>
           <div class="col-6 col-md-3">
             <label class="form-label mb-1">По</label>
-            <input type="date" class="form-control" id="rt-to" />
+            <input type="date" class="form-control form-control-sm" id="rt-to" />
           </div>
           <div class="col-12 col-md-6 d-flex gap-2">
-            <button class="btn btn-outline-secondary" id="rt-this-week">Эта неделя</button>
-            <button class="btn btn-outline-secondary" id="rt-prev-week">Прошлая неделя</button>
-            <button class="btn btn-outline-secondary" id="rt-this-month">Этот месяц</button>
-            <button class="btn btn-outline-secondary" id="rt-last-month">Прошлый месяц</button>
-            <button class="btn btn-primary ms-auto" id="rt-apply">Показать</button>
+            <button class="btn btn-outline-secondary btn-sm" id="rt-this-week">Эта неделя</button>
+            <button class="btn btn-outline-secondary btn-sm" id="rt-prev-week">Прошлая неделя</button>
+            <button class="btn btn-outline-secondary btn-sm" id="rt-this-month">Этот месяц</button>
+            <button class="btn btn-outline-secondary btn-sm" id="rt-last-month">Прошлый месяц</button>
+            <button class="btn btn-primary btn-sm ms-auto" id="rt-apply">Показать</button>
           </div>
         </div>
         <div class="mb-2 d-flex">
@@ -281,13 +278,13 @@ export async function renderDashboard(user) {
         }
 
         const table = document.createElement('table');
-        table.className = 'table table-striped table-sm align-middle';
+        table.className = 'table table-striped table-compact align-middle';
         table.innerHTML = `
           <thead>
             <tr>
               <th style="width:60px;">#</th>
               <th>Сотрудник</th>
-              <th style="width:200px;">Email</th>
+              <th style="width:220px;">Email</th>
               <th style="width:120px;">Баллы</th>
             </tr>
           </thead>

@@ -102,20 +102,26 @@ a:hover, .link:hover{ text-decoration: underline; }
 .table tbody tr{ border-top: 1px solid var(--border); }
 .table-striped>tbody>tr:nth-of-type(odd)>* { background: #FAFAFA; }
 
+/* Компактные таблицы */
+.table-compact { font-size: 14px; }
+.table-compact th, .table-compact td { padding: .35rem .5rem; }
+.table-xs { font-size: 12px; }
+.table-xs th, .table-xs td { padding: .3rem .45rem; }
 
+/* Суженный контейнер для истории */
+.narrow-wrap { max-width: 720px; }
 
-/* Character row under progress */
-.kpi-char-row{ margin-top: 6px; }
-.kpi-char-track{ height: 32px; display: inline-block; }
-
-/* Caption under headers (small) */
-.caption{
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-tertiary);
-  margin: -4px 0 8px 0;
+/* Ровняем высоту кнопок и полей (малый размер) в тулбаре */
+.toolbar-sm .form-control.form-control-sm,
+.toolbar-sm .btn.btn-sm {
+  height: 32px;
+  padding: .25rem .5rem;
 }
 
+/* Статус в зелёном */
+.status-done { color: var(--success); font-weight: 600; }
+
+/* Бэйдж-иконки */
 .badge-icon { margin-left: .4rem; font-size: 1.1rem; line-height: 1; }
 
 /* Базовый трек прогресса */
@@ -133,18 +139,10 @@ a:hover, .link:hover{ text-decoration: underline; }
 .progress-bar.bar-70       { background-color: #36B37E; } /* ≥70 */
 
 /* Ряд с персонажем над/вдоль прогресса */
-.kpi-char-row {
-  height: 72px;       /* под иконку 64px + отступы */
-  position: relative;
-  margin: 8px 0 4px 0;
-}
-.kpi-char-track {
-  height: 100%;
-}
+.kpi-char-row{ height: 72px; position: relative; margin: 8px 0 4px 0; }
+.kpi-char-track{ height: 100%; }
 .kpi-char-track img,
-.kpi-char-track span {
-  vertical-align: middle;
-}
+.kpi-char-track span { vertical-align: middle; }
 
 .kpi-char-caption {
   margin-top: 4px;
@@ -152,61 +150,14 @@ a:hover, .link:hover{ text-decoration: underline; }
   line-height: 1.2;
   color: #6b7280; /* спокойный серый */
   font-weight: 500;
-}
-/* === KPI progress: фиксы, чтобы число не дублировалось === */
-
-/* Некоторые темы рисуют число через ::after — отключаем */
-.progress .progress-bar::before,
-.progress .progress-bar::after {
-  content: none !important;
-}
-
-/* Наше число на полосе — всегда поверх и без переносов */
-.kpi-bar-value {
-  position: relative;
-  z-index: 1;
   white-space: nowrap;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 
-/* Базовый трек и заполнение под KPI (оставил ваши цвета) */
-.progress {
-  background-color: #e9edf2;
-  height: 14px;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-/* Пороговые цвета (0–29 / 30–49 / 50–69 / ≥70) */
-.progress-bar.bar-critical { background-color: #FF0404; } /* 0–29 */
-.progress-bar.bar-30       { background-color: #ffd966; } /* 30–49 */
-.progress-bar.bar-50       { background-color: #9fc5e8; } /* 50–69 */
-.progress-bar.bar-70       { background-color: #36B37E; } /* ≥70 */
-
-/* Ряд с персонажем */
-.kpi-char-row   { margin: 8px 0 4px; height: 72px; position: relative; }
-.kpi-char-track { height: 100%; }
-.kpi-char-track img,
-.kpi-char-track span { vertical-align: middle; }
-
-/* Подпись под иконкой — в одну строку */
-.kpi-char-caption {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.2;
-  color: #6b7280;
-  font-weight: 500;
-  white-space: nowrap;   /* ← чтобы не переносилась */
-}
 /* Отключаем любые авто-подписи у прогресс-баров */
 .progress .progress-bar::before,
 .progress .progress-bar::after,
 .progress::before,
-.progress::after {
-  content: none !important;
-  display: none !important;
-}
+.progress::after { content: none !important; display: none !important; }
 
 /* Наше число на полосе */
 .kpi-bar-value {
@@ -217,3 +168,18 @@ a:hover, .link:hover{ text-decoration: underline; }
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
+
+/* Базовый трек и заполнение под KPI */
+.progress { background-color: #e9edf2; height: 14px; border-radius: 8px; overflow: hidden; }
+
+/* Пороговые цвета */
+.progress-bar.bar-critical { background-color: #FF0404; }
+.progress-bar.bar-30       { background-color: #ffd966; }
+.progress-bar.bar-50       { background-color: #9fc5e8; }
+.progress-bar.bar-70       { background-color: #36B37E; }
+
+/* Ряд с персонажем (дубли фиксов) */
+.kpi-char-row   { margin: 8px 0 4px; height: 72px; position: relative; }
+.kpi-char-track { height: 100%; }
+.kpi-char-track img,
+.kpi-char-track span { vertical-align: middle; }
