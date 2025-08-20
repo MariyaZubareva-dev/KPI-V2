@@ -1,40 +1,54 @@
 // js/admin-panel.js
 import {
-  getProgress,
+  // progress & KPI
+  getProgress,            // оставлен для совместимости, но не обязателен
+  getUserKPIs,            // ← используем для списка KPI с учётом даты и repeat_policy
   recordKPI,
-  logEvent,
   listProgress,
   deleteProgress,
+  // KPI CRUD
   kpiList,
   kpiCreate,
   kpiUpdate,
   kpiDelete,
+  // SETTINGS
+  settingsGet,
+  settingsSet,
+  // USERS CRUD
   usersList,
   userCreate,
   userUpdate,
-  userDelete
+  userDelete,
+  // LOGGING
+  logEvent,
 } from './api.js';
 
 /**
- * Admin-панель (отметка KPI, история, CRUD задач, настройки)
- * @param {Array<{id:number, name:string, email:string, role:string}>} usersData
+ * Admin-панель:
+ * - Отметка KPI с выбором даты (в т.ч. «задним числом»)
+ * - История отметок с удалением
+ * - CRUD по KPI
+ * - Настройки: глобальная цель (month_goal) и политика повторов (repeat_policy)
+ * - CRUD по пользователям + привязка к админам (manager_id)
+ *
+ * @param {Array<{id:number,name:string,email:string,role:string}>} usersData
+ * @returns {HTMLElement}
  */
 export function createAdminPanel(usersData = []) {
   const employees = Array.isArray(usersData)
     ? usersData.filter(u => String(u.role || '').toLowerCase() === 'employee')
     : [];
 
-  // корневой контейнер
+  /* ---------- Корневой контейнер ---------- */
   const container = document.createElement('section');
   container.id = 'admin-panel';
   container.className = 'mt-5';
 
-  // заголовок
   const title = document.createElement('h3');
   title.textContent = 'Admin-панель';
   container.appendChild(title);
 
-  // === Панель управления (выбор пользователя и даты) ===
+  /* ---------- Панель управления (Сотрудник + Дата) ---------- */
   const controlsCard = document.createElement('div');
   controlsCard.className = 'card mb-4';
   controlsCard.innerHTML = `
@@ -56,11 +70,11 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(controlsCard);
 
-  const userSel  = controlsCard.querySelector('#ap-user');
-  const dateInp  = controlsCard.querySelector('#ap-date');
-  const refreshBtn = controlsCard.querySelector('#ap-refresh');
+  const userSel   = controlsCard.querySelector('#ap-user');
+  const dateInp   = controlsCard.querySelector('#ap-date');
+  const refreshBtn= controlsCard.querySelector('#ap-refresh');
 
-  // заполнение списка сотрудников
+  // первичное заполнение селекта сотрудника
   userSel.innerHTML = '';
   if (employees.length === 0) {
     const opt = document.createElement('option');
@@ -79,14 +93,13 @@ export function createAdminPanel(usersData = []) {
   // дефолтная дата — сегодня
   dateInp.valueAsDate = new Date();
 
-  // выберем первого сотрудника по умолчанию
+  // выбрать первого сотрудника
   if (employees.length) userSel.value = String(employees[0].id);
 
-  // === Основной двухколоночный блок: слева KPI, справа История ===
+  /* ---------- Две колонки: KPI (слева) + История (справа) ---------- */
   const twoCol = document.createElement('div');
   twoCol.className = 'row';
 
-  // Левая колонка — список KPI / отметка
   const colLeft = document.createElement('div');
   colLeft.className = 'col-12 col-lg-6';
   colLeft.innerHTML = `
@@ -98,7 +111,6 @@ export function createAdminPanel(usersData = []) {
     </div>
   `;
 
-  // Правая колонка — история
   const colRight = document.createElement('div');
   colRight.className = 'col-12 col-lg-6';
   colRight.innerHTML = `
@@ -125,7 +137,7 @@ export function createAdminPanel(usersData = []) {
   twoCol.append(colLeft, colRight);
   container.appendChild(twoCol);
 
-  // === CRUD задач (KPI) ===
+  /* ---------- KPI CRUD ---------- */
   const kpiCrudCard = document.createElement('div');
   kpiCrudCard.className = 'card mt-4';
   kpiCrudCard.innerHTML = `
@@ -152,7 +164,39 @@ export function createAdminPanel(usersData = []) {
     </div>
   `;
   container.appendChild(kpiCrudCard);
-    // === USERS: CRUD + привязка к админам ===
+
+  /* ---------- Настройки (цель + политика повторов) ---------- */
+  const settingsCard = document.createElement('div');
+  settingsCard.className = 'card mt-4';
+  settingsCard.innerHTML = `
+    <div class="card-body">
+      <h5 class="card-title mb-3">Настройки</h5>
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1">Глобальная цель за месяц (баллы)</label>
+          <div class="input-group">
+            <input type="number" min="1" class="form-control" id="settings-goal" placeholder="100" />
+            <button class="btn btn-primary" id="settings-save-goal">Сохранить</button>
+          </div>
+        </div>
+        <div class="col-12 col-md-5">
+          <label class="form-label mb-1">Повторы задач</label>
+          <div class="input-group">
+            <select class="form-select" id="settings-repeat-policy">
+              <option value="unlimited">Без ограничений</option>
+              <option value="per_day">Не чаще 1 раза в день</option>
+              <option value="per_week">Не чаще 1 раза в неделю</option>
+            </select>
+            <button class="btn btn-outline-primary" id="settings-save-policy">Применить</button>
+          </div>
+          <div class="form-text">Определяет, как часто можно отмечать один и тот же KPI для сотрудника.</div>
+        </div>
+      </div>
+    </div>
+  `;
+  container.appendChild(settingsCard);
+
+  /* ---------- USERS: CRUD + привязка к админам ---------- */
   const usersCrudCard = document.createElement('div');
   usersCrudCard.className = 'card mt-4';
   usersCrudCard.innerHTML = `
@@ -188,36 +232,8 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(usersCrudCard);
 
-  const usersCrudList = usersCrudCard.querySelector('#users-crud-list');
-  const usrNewName    = usersCrudCard.querySelector('#usr-new-name');
-  const usrNewEmail   = usersCrudCard.querySelector('#usr-new-email');
-  const usrNewRole    = usersCrudCard.querySelector('#usr-new-role');
-  const usrNewAddBtn  = usersCrudCard.querySelector('#usr-new-add');
-
-
-  // === НАСТРОЙКИ (глобальная цель) ===
-  const settingsCard = document.createElement('div');
-  settingsCard.className = 'card mt-4';
-  settingsCard.innerHTML = `
-    <div class="card-body">
-      <h5 class="card-title mb-3">Настройки</h5>
-      <div class="row g-2 align-items-end">
-        <div class="col-8 col-md-4">
-          <label class="form-label mb-1">Глобальная цель на месяц (баллы)</label>
-          <input type="number" step="1" min="1" class="form-control" id="set-month-goal" placeholder="100" />
-        </div>
-        <div class="col-4 col-md-2 d-grid">
-          <button class="btn btn-primary" id="set-month-goal-save">Сохранить</button>
-        </div>
-        <div class="col-12 col-md-6 text-secondary small">
-          Цель используется для верхнего прогресс-бара отдела: % = текущие баллы / цель × 100%.
-        </div>
-      </div>
-    </div>
-  `;
-  container.appendChild(settingsCard);
-
-  // refs
+  /* ---------- Refs ---------- */
+  // KPI отметка/история
   const kpiListBox   = colLeft.querySelector('#ap-kpi-list');
   const histBox      = colRight.querySelector('#ap-history');
   const histFromInp  = colRight.querySelector('#ap-hist-from');
@@ -225,15 +241,26 @@ export function createAdminPanel(usersData = []) {
   const histApplyBtn = colRight.querySelector('#ap-hist-apply');
   const histClearBtn = colRight.querySelector('#ap-hist-clear');
 
+  // KPI CRUD
   const kpiCrudList  = kpiCrudCard.querySelector('#kpi-crud-list');
   const kpiNewName   = kpiCrudCard.querySelector('#kpi-new-name');
   const kpiNewWeight = kpiCrudCard.querySelector('#kpi-new-weight');
-  const kpiAddBtn    = kpiCrudCard.querySelector('#kpi-new-add'); // ← одно объявление
+  const kpiAddBtn    = kpiCrudCard.querySelector('#kpi-new-add'); // ← едиственное объявление
 
-  const goalInput = settingsCard.querySelector('#set-month-goal');
-  const goalSave  = settingsCard.querySelector('#set-month-goal-save');
+  // SETTINGS
+  const inpGoal      = settingsCard.querySelector('#settings-goal');
+  const btnSaveGoal  = settingsCard.querySelector('#settings-save-goal');
+  const selPolicy    = settingsCard.querySelector('#settings-repeat-policy');
+  const btnSavePolicy= settingsCard.querySelector('#settings-save-policy');
 
-  // === Вспомогательные ===
+  // USERS CRUD
+  const usersCrudList= usersCrudCard.querySelector('#users-crud-list');
+  const usrNewName   = usersCrudCard.querySelector('#usr-new-name');
+  const usrNewEmail  = usersCrudCard.querySelector('#usr-new-email');
+  const usrNewRole   = usersCrudCard.querySelector('#usr-new-role');
+  const usrNewAddBtn = usersCrudCard.querySelector('#usr-new-add');
+
+  /* ---------- Helpers ---------- */
   function getActorEmail() {
     try {
       const u = JSON.parse(localStorage.getItem('user') || '{}');
@@ -248,7 +275,7 @@ export function createAdminPanel(usersData = []) {
     return `${y}-${m}-${day}`;
   }
 
-  // === Рендер списка KPI для отметки ===
+  /* ---------- KPI: список для отметки ---------- */
   async function renderKpiListFor(userId) {
     kpiListBox.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
@@ -257,13 +284,14 @@ export function createAdminPanel(usersData = []) {
       </div>
     `;
     try {
-      const res = await getProgress('user', String(userId));
+      const selectedDate = dateInp.value || fmtDateInputValue(new Date());
+
+      // используем эндпоинт с политикой повторов
+      const res = await getUserKPIs(String(userId), { date: selectedDate });
       const kpis = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
       kpis.sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
 
-      const selectedDate = dateInp.value || fmtDateInputValue(new Date());
       kpiListBox.innerHTML = '';
-
       if (!kpis.length) {
         kpiListBox.innerHTML = `<div class="text-secondary">Для пользователя нет KPI.</div>`;
         return;
@@ -282,7 +310,7 @@ export function createAdminPanel(usersData = []) {
         nm.innerHTML = `<strong>${kpi.name}</strong>`;
         const sub = document.createElement('div');
         sub.className = 'text-secondary small';
-        sub.textContent = `Баллы: ${kpi.weight} ${kpi.done ? ' • уже отмечено на этой неделе' : ''}`;
+        sub.textContent = `Баллы: ${kpi.weight}${kpi.done ? ' • уже отмечено по политике' : ''}`;
         left.append(nm, sub);
 
         const right = document.createElement('div');
@@ -305,7 +333,7 @@ export function createAdminPanel(usersData = []) {
               userID: String(userId),
               kpiId: String(kpi.KPI_ID),
               actorEmail,
-              date: dateInp.value || selectedDate, // «задним числом»
+              date: dateInp.value || selectedDate, // задним числом — ок
             });
 
             try {
@@ -318,19 +346,23 @@ export function createAdminPanel(usersData = []) {
               });
             } catch {}
 
-            // обновляем KPI-список (флаг done может поменяться) и историю
+            // Обновить KPI-список и историю
             await Promise.all([
               renderKpiListFor(userId),
               renderHistoryFor(userId),
             ]);
 
-            // уведомим дашборд
+            // Уведомить дашборд
             document.dispatchEvent(new CustomEvent('kpi:recorded', {
               detail: { userID: String(userId), kpiId: String(kpi.KPI_ID) }
             }));
           } catch (e) {
             console.error(e);
-            alert('Не удалось записать KPI. Подробности — в консоли.');
+            if (String(e?.message||'').includes('409')) {
+              alert('Согласно текущей политике повторов задача уже отмечена в этот период.');
+            } else {
+              alert('Не удалось записать KPI. Подробности — в консоли.');
+            }
           } finally {
             btn.disabled = false;
           }
@@ -348,7 +380,7 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-  // === История отметок ===
+  /* ---------- История отметок ---------- */
   async function renderHistoryFor(userId) {
     histBox.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
@@ -415,9 +447,9 @@ export function createAdminPanel(usersData = []) {
             try { await logEvent('progress_deleted_ui', { id: r.id, actorEmail }); } catch {}
             await Promise.all([
               renderHistoryFor(userId),
-              renderKpiListFor(userId), // на случай, если удалили отметку текущей недели
+              renderKpiListFor(userId), // если удалили отметку текущего периода
             ]);
-            document.dispatchEvent(new CustomEvent('kpi:recorded')); // чтобы дашборд пересчитался
+            document.dispatchEvent(new CustomEvent('kpi:recorded'));
           } catch (e) {
             console.error(e);
             alert('Не удалось удалить запись.');
@@ -437,7 +469,7 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-  // === CRUD: список KPI с редактированием ===
+  /* ---------- KPI CRUD: список и редактирование ---------- */
   async function renderKpiCrudList(container) {
     container.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
@@ -561,38 +593,54 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-  // === Настройки: загрузка и сохранение цели ===
+  /* ---------- SETTINGS: загрузка и сохранение ---------- */
   async function loadSettings() {
     try {
-      const r = await settingsGet('month_goal');
-      const v = Number(r?.value ?? r ?? 100);
-      goalInput.value = String(v > 0 ? Math.round(v) : 100);
+      const rGoal = await settingsGet('month_goal');
+      const vGoal = rGoal?.data?.value ?? rGoal?.value ?? '100';
+      inpGoal.value = String(vGoal);
+
+      const rPol = await settingsGet('repeat_policy');
+      const vPol = String(rPol?.data?.value ?? rPol?.value ?? 'unlimited').toLowerCase();
+      selPolicy.value = ['unlimited','per_day','per_week'].includes(vPol) ? vPol : 'unlimited';
     } catch (e) {
       console.error('settingsGet failed', e);
-      goalInput.value = '100';
     }
   }
 
-  goalSave.addEventListener('click', async () => {
+  btnSaveGoal.addEventListener('click', async () => {
     const actorEmail = getActorEmail();
-    if (!actorEmail) { alert('Нет email администратора (перелогиньтесь).'); return; }
-    let v = Number(goalInput.value);
-    if (!Number.isFinite(v) || v <= 0) { alert('Укажите цель > 0'); return; }
-    v = Math.round(v);
-    goalSave.disabled = true;
+    if (!actorEmail) { alert('Нет email администратора.'); return; }
+    const v = Math.max(1, Number(inpGoal.value || 0));
     try {
       await settingsSet('month_goal', String(v), actorEmail);
-      try { await logEvent('settings_updated_ui', { key: 'month_goal', value: v, actorEmail }); } catch {}
-      // уведомим дашборд — он перезагрузит агрегаты
-      document.dispatchEvent(new CustomEvent('settings:changed', { detail: { key: 'month_goal', value: v }}));
+      await logEvent('settings_set_goal', { value: v, actorEmail });
+      alert('Цель сохранена.');
+      document.dispatchEvent(new CustomEvent('kpi:changed'));
     } catch (e) {
       console.error(e);
       alert('Не удалось сохранить цель.');
-    } finally {
-      goalSave.disabled = false;
     }
   });
-    async function renderUsersCrudList(container) {
+
+  btnSavePolicy.addEventListener('click', async () => {
+    const actorEmail = getActorEmail();
+    if (!actorEmail) { alert('Нет email администратора.'); return; }
+    const v = String(selPolicy.value || 'unlimited');
+    try {
+      await settingsSet('repeat_policy', v, actorEmail);
+      await logEvent('settings_set_policy', { value: v, actorEmail });
+      alert('Политика повторов сохранена.');
+      // перерисуем список KPI, т.к. флаги "уже отмечено" зависят от policy
+      await renderKpiListFor(userSel.value);
+    } catch (e) {
+      console.error(e);
+      alert('Не удалось сохранить политику повторов.');
+    }
+  });
+
+  /* ---------- USERS: список/редактирование ---------- */
+  async function renderUsersCrudList(container) {
     container.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
         <div class="spinner-border" role="status" aria-hidden="true"></div>
@@ -608,7 +656,6 @@ export function createAdminPanel(usersData = []) {
         return;
       }
 
-      // список админов для селекта менеджера
       const admins = rows.filter(r => String(r.role||'').toLowerCase() === 'admin' && Number(r.active||0) === 1);
 
       const table = document.createElement('table');
@@ -714,7 +761,6 @@ export function createAdminPanel(usersData = []) {
             });
             try { await logEvent('user_updated_ui', { id: u.id, actorEmail }); } catch{}
             await renderUsersCrudList(container);
-            // если поменяли роли/активность — обновим селект в верхней панели
             await refreshEmployeeSelect();
             document.dispatchEvent(new CustomEvent('users:changed'));
           } catch (e) {
@@ -781,11 +827,12 @@ export function createAdminPanel(usersData = []) {
     }
   });
 
-  // Обновляем верхний селект сотрудников (для отметки KPI)
+  // Обновить селект сотрудников (для отметки KPI)
   async function refreshEmployeeSelect() {
     try {
       const all = await usersList({ includeInactive: true });
       const employeesOnly = all.filter(u => String(u.role||'').toLowerCase() === 'employee' && Number(u.active||0) === 1);
+      const prev = String(userSel.value || '');
       userSel.innerHTML = '';
       if (!employeesOnly.length) {
         const opt = document.createElement('option');
@@ -798,8 +845,6 @@ export function createAdminPanel(usersData = []) {
           opt.textContent = u.name || u.email || `ID ${u.id}`;
           userSel.appendChild(opt);
         });
-        // сохранить прежний выбор, если он ещё существует
-        const prev = String(userSel.value || '');
         if (prev && employeesOnly.some(u => String(u.id) === prev)) {
           userSel.value = prev;
         }
@@ -809,24 +854,21 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-
-  // === События и первичная отрисовка ===
-    async function refreshAll() {
+  /* ---------- События и первичная отрисовка ---------- */
+  async function refreshAll() {
     const userId = userSel.value;
     await Promise.all([
       renderKpiListFor(userId),
       renderHistoryFor(userId),
       renderKpiCrudList(kpiCrudList),
-      renderUsersCrudList(usersCrudList),   // ← добавили
+      renderUsersCrudList(usersCrudList),
+      loadSettings(),
     ]);
   }
 
-
   userSel.addEventListener('change', refreshAll);
   refreshBtn.addEventListener('click', refreshAll);
-  dateInp.addEventListener('change', () => {
-    renderKpiListFor(userSel.value);
-  });
+  dateInp.addEventListener('change', () => renderKpiListFor(userSel.value));
 
   histApplyBtn.addEventListener('click', () => renderHistoryFor(userSel.value));
   histClearBtn.addEventListener('click', () => {
@@ -835,7 +877,7 @@ export function createAdminPanel(usersData = []) {
     renderHistoryFor(userSel.value);
   });
 
-  // обработчик создания KPI (без повторного const!)
+  // KPI: создание новой
   kpiAddBtn.addEventListener('click', async () => {
     const name = String(kpiNewName.value || '').trim();
     const weight = Number(kpiNewWeight.value);
@@ -853,8 +895,7 @@ export function createAdminPanel(usersData = []) {
       kpiNewName.value = '';
       kpiNewWeight.value = '';
       await renderKpiCrudList(kpiCrudList);
-      // обновим список KPI для отметки, чтобы новая задача сразу появилась
-      await renderKpiListFor(userSel.value);
+      await renderKpiListFor(userSel.value); // новая задача появится в списке отметок
       document.dispatchEvent(new CustomEvent('kpi:changed'));
     } catch (e) {
       console.error(e);
@@ -864,8 +905,8 @@ export function createAdminPanel(usersData = []) {
     }
   });
 
-  // первичный рендер
-  refreshAll();
+  // первичное наполнение селекта (если usersData пуст) и общий рендер
+  refreshEmployeeSelect().finally(() => refreshAll());
 
   return container;
 }

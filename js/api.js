@@ -29,9 +29,13 @@ export async function getProgress(scope, userID) {
   const params = { scope }; if (userID) params.userID = userID;
   return httpGet('/getprogress', params);
 }
-export async function getUserKPIs(userID, period = 'this_week') {
-  return httpGet('/getprogress', { scope: 'user', userID, period });
+export async function getUserKPIs(userID, { period = 'this_week', date } = {}) {
+  const params = { scope: 'user', userID };
+  if (period) params.period = period;
+  if (date)   params.date   = date;  // <- новая опция
+  return httpGet('/getprogress', params);
 }
+
 export async function getUsersAggregate(period = 'this_week') {
   const scope = period === 'prev_week' ? 'users_lastweek' : 'users';
   return httpGet('/getprogress', { scope });
