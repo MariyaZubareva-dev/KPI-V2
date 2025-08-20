@@ -1,7 +1,6 @@
 // js/admin-panel.js
 import {
   getProgress,
-  getUserKPIsByDate,
   recordKPI,
   logEvent,
   listProgress,
@@ -9,11 +8,13 @@ import {
   kpiList,
   kpiCreate,
   kpiUpdate,
-  kpiDelete
+  kpiDelete,
+  settingsGet,
+  settingsSet,
 } from './api.js';
 
 /**
- * Admin-панель (отметка KPI, история, CRUD задач)
+ * Admin-панель (отметка KPI, история, CRUD задач, НАСТРОЙКИ)
  * @param {Array<{id:number, name:string, email:string, role:string}>} usersData
  */
 export function createAdminPanel(usersData = []) {
@@ -90,7 +91,6 @@ export function createAdminPanel(usersData = []) {
     <div class="card">
       <div class="card-body">
         <h5 class="card-title mb-3">Отметить KPI</h5>
-        <div class="text-secondary small mb-2">Повторные отметки ограничиваются политикой повторов (день/неделя).</div>
         <div id="ap-kpi-list"></div>
       </div>
     </div>
@@ -151,6 +151,47 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(kpiCrudCard);
 
+  // === НАСТРОЙКИ (глобальная цель + политика повторов) ===
+  const settingsCard = document.createElement('div');
+  settingsCard.className = 'card mt-4';
+  settingsCard.innerHTML = `
+    <div class="card-body">
+      <h5 class="card-title mb-3">Настройки</h5>
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1">Глобальная цель (месяц), баллы</label>
+          <input type="number" min="1" step="1" class="form-control" id="st-goal" placeholder="100" />
+        </div>
+
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1">Политика повторов</label>
+          <select class="form-select" id="st-policy">
+            <option value="per_day">1 отметка в день</option>
+            <option value="per_week">1 отметка в неделю</option>
+            <option value="none">Без ограничений</option>
+          </select>
+          <div class="text-secondary small mt-1">
+            Сервер учитывает политику при записи KPI (409 при нарушении).
+          </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1">Охват</label>
+          <select class="form-select" id="st-scope">
+            <option value="per_kpi">На каждый KPI отдельно</option>
+            <option value="global">Глобально (любой KPI)</option>
+          </select>
+        </div>
+
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-primary" id="st-save">Сохранить</button>
+          <span class="text-secondary small" id="st-status" aria-live="polite"></span>
+        </div>
+      </div>
+    </div>
+  `;
+  container.appendChild(settingsCard);
+
   // refs
   const kpiListBox   = colLeft.querySelector('#ap-kpi-list');
   const histBox      = colRight.querySelector('#ap-history');
@@ -163,6 +204,13 @@ export function createAdminPanel(usersData = []) {
   const kpiNewName   = kpiCrudCard.querySelector('#kpi-new-name');
   const kpiNewWeight = kpiCrudCard.querySelector('#kpi-new-weight');
   const kpiAddBtn    = kpiCrudCard.querySelector('#kpi-new-add');
+
+  // settings refs
+  const stGoal   = settingsCard.querySelector('#st-goal');
+  const stPolicy = settingsCard.querySelector('#st-policy');
+  const stScope  = settingsCard.querySelector('#st-scope');
+  const stSave   = settingsCard.querySelector('#st-save');
+  const stStatus = settingsCard.querySelector('#st-status');
 
   // === Вспомогательные ===
   function getActorEmail() {
@@ -188,12 +236,11 @@ export function createAdminPanel(usersData = []) {
       </div>
     `;
     try {
-      const selectedDate = dateInp.value || fmtDateInputValue(new Date());
-      // важное изменение: берём KPI с учётом даты — done рассчитывается в бэке по repeat_policy
-      const res = await getUserKPIsByDate(String(userId), selectedDate);
+      const res = await getProgress('user', String(userId));
       const kpis = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
       kpis.sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
 
+      const selectedDate = dateInp.value || fmtDateInputValue(new Date());
       kpiListBox.innerHTML = '';
 
       if (!kpis.length) {
@@ -214,7 +261,7 @@ export function createAdminPanel(usersData = []) {
         nm.innerHTML = `<strong>${kpi.name}</strong>`;
         const sub = document.createElement('div');
         sub.className = 'text-secondary small';
-        sub.textContent = `Баллы: ${kpi.weight}${kpi.done ? ' • уже отмечено в выбранный период' : ''}`;
+        sub.textContent = `Баллы: ${kpi.weight} ${kpi.done ? ' • уже отмечено на этой неделе' : ''}`;
         left.append(nm, sub);
 
         const right = document.createElement('div');
@@ -226,8 +273,7 @@ export function createAdminPanel(usersData = []) {
 
         const btn = document.createElement('button');
         btn.className = 'btn btn-primary btn-sm';
-        btn.textContent = kpi.done ? 'Отмечено' : 'Отметить';
-        btn.disabled = !!kpi.done;
+        btn.textContent = 'Отметить';
 
         btn.addEventListener('click', async () => {
           const actorEmail = getActorEmail();
@@ -251,22 +297,20 @@ export function createAdminPanel(usersData = []) {
               });
             } catch {}
 
-            // обновляем KPI-список (флаг done может поменяться) и историю
             await Promise.all([
               renderKpiListFor(userId),
               renderHistoryFor(userId),
             ]);
 
-            // уведомим дашборд
             document.dispatchEvent(new CustomEvent('kpi:recorded', {
               detail: { userID: String(userId), kpiId: String(kpi.KPI_ID) }
             }));
           } catch (e) {
-            console.error(e);
-            // точечная обработка 409 (конфликт по политике повторов)
+            // 409 = нарушена политика повторов (сервер вернул Conflict)
             if (String(e?.message || '').includes('409')) {
-              alert('Эта задача уже отмечена в выбранный период (политика повторов).');
+              alert('Нельзя отметить повторно в выбранный период согласно политике повторов.');
             } else {
+              console.error(e);
               alert('Не удалось записать KPI. Подробности — в консоли.');
             }
           } finally {
@@ -353,9 +397,9 @@ export function createAdminPanel(usersData = []) {
             try { await logEvent('progress_deleted_ui', { id: r.id, actorEmail }); } catch {}
             await Promise.all([
               renderHistoryFor(userId),
-              renderKpiListFor(userId), // на случай, если удалили отметку текущего периода
+              renderKpiListFor(userId),
             ]);
-            document.dispatchEvent(new CustomEvent('kpi:recorded')); // чтобы дашборд пересчитался
+            document.dispatchEvent(new CustomEvent('kpi:recorded'));
           } catch (e) {
             console.error(e);
             alert('Не удалось удалить запись.');
@@ -494,10 +538,59 @@ export function createAdminPanel(usersData = []) {
 
       container.appendChild(table);
     } catch (e) {
-      console.error('Ошибка загрузки списка KPI:', e);
+      console.error(e);
       container.innerHTML = `<div class="alert alert-danger">Ошибка загрузки списка KPI.</div>`;
     }
   }
+
+  // === Настройки: загрузка/сохранение ===
+  async function loadSettings() {
+    try {
+      const goalResp = await settingsGet('month_goal');
+      const policyResp = await settingsGet('repeat_policy');
+      const scopeResp  = await settingsGet('repeat_scope');
+
+      const goalVal = Number(goalResp?.value ?? goalResp ?? 100) || 100;
+      stGoal.value = String(Math.max(1, Math.round(goalVal)));
+
+      stPolicy.value = String(policyResp?.value ?? policyResp ?? 'per_day');
+      stScope.value  = String(scopeResp?.value  ?? scopeResp  ?? 'per_kpi');
+    } catch (e) {
+      console.error('settingsGet failed', e);
+      // заполним дефолтами
+      stGoal.value = '100';
+      stPolicy.value = 'per_day';
+      stScope.value = 'per_kpi';
+    }
+  }
+
+  stSave.addEventListener('click', async () => {
+    const actorEmail = getActorEmail();
+    if (!actorEmail) { alert('Нет email администратора (перелогиньтесь).'); return; }
+
+    const goal = Math.max(1, Number(stGoal.value || 100) || 100);
+    const policy = String(stPolicy.value || 'per_day');
+    const scope  = String(stScope.value  || 'per_kpi');
+
+    stSave.disabled = true;
+    stStatus.textContent = 'Сохраняем…';
+    try {
+      await settingsSet('month_goal', String(goal), actorEmail);
+      await settingsSet('repeat_policy', policy, actorEmail);
+      await settingsSet('repeat_scope', scope, actorEmail);
+      stStatus.textContent = 'Сохранено';
+      try { await logEvent('settings_saved_ui', { goal, policy, scope, actorEmail }); } catch {}
+      // уведомим остальные части UI
+      document.dispatchEvent(new CustomEvent('settings:changed'));
+    } catch (e) {
+      console.error(e);
+      stStatus.textContent = 'Ошибка';
+      alert('Не удалось сохранить настройки.');
+    } finally {
+      stSave.disabled = false;
+      setTimeout(() => { stStatus.textContent = ''; }, 2000);
+    }
+  });
 
   // === События и первичная отрисовка ===
   async function refreshAll() {
@@ -506,6 +599,7 @@ export function createAdminPanel(usersData = []) {
       renderKpiListFor(userId),
       renderHistoryFor(userId),
       renderKpiCrudList(kpiCrudList),
+      loadSettings(), // ← загрузим настройки
     ]);
   }
 
@@ -540,7 +634,6 @@ export function createAdminPanel(usersData = []) {
       kpiNewName.value = '';
       kpiNewWeight.value = '';
       await renderKpiCrudList(kpiCrudList);
-      // обновим список KPI для отметки, чтобы новая задача сразу появилась
       await renderKpiListFor(userSel.value);
       document.dispatchEvent(new CustomEvent('kpi:changed'));
     } catch (e) {
