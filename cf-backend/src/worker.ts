@@ -569,11 +569,16 @@ async function handleRecordKPI(env: Env, url: URL) {
 
   // История (если есть таблица history — не критично, можно опустить при отсутствии)
   try {
-    await env.DB
-      .prepare(`INSERT INTO history (user_id, ts, kpi_id, completed, score) VALUES (?, ?, ?, 1, ?)`)
-      .bind(userID, new Date().toISOString(), kpiId, kpi.weight || 0)
-      .run();
-  } catch {}
+    await env.DB.prepare(
+      `INSERT INTO progress (user_id, date, kpi_id, completed, score) VALUES (?, ?, ?, 1, ?)`
+    ).bind(userID, dateStr, kpiId, kpi.weight || 0).run();
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (msg.includes("UNIQUE") || msg.includes("constraint") || msg.includes("unique")) {
+      return err("duplicate in selected period (unique constraint)", 409);
+    }
+    throw e;
+  }
 
   await logEvent(env, "kpi_recorded_backend", actorEmail, Number(userID), Number(kpiId), Number(kpi.weight || 0), { date: dateStr });
 
