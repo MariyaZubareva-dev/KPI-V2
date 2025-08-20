@@ -1,5 +1,12 @@
 /// <reference types="@cloudflare/workers-types" />
 
+// Cloudflare Worker + D1.
+// Роуты: /ping, /login, /getprogress, /recordkpi, /log, /bootstrap,
+//        /leaderboard, /progress_list, /progress_delete,
+//        /kpi_list, /kpi_create, /kpi_update, /kpi_delete
+//        /settings_get, /settings_set
+//        /users_list, /user_create, /user_update, /user_delete
+
 export interface Env {
   DB: D1Database;
   COMMON_PASSWORD: string;
@@ -87,13 +94,10 @@ function fmtYYYYMMDD(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-/* helper: ISO week number */
-function getWeekNumberISO(dIn: Date) {
-  const d = new Date(Date.UTC(dIn.getFullYear(), dIn.getMonth(), dIn.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+function parseYMD(s: string): Date {
+  // безопасно: трактуем как локальную дату (без часового смещения)
+  const [y, m, d] = s.split("-").map(n => Number(n));
+  return new Date(y, (m - 1), d);
 }
 
 /* ================ SQL helpers ================= */
@@ -162,6 +166,43 @@ async function setSetting(env: Env, key: string, value: string): Promise<void> {
     `INSERT INTO settings(key,value) VALUES(?,?)
      ON CONFLICT(key) DO UPDATE SET value=excluded.value`
   ).bind(key, value).run();
+}
+
+/* ============ repeat policy helpers ============ */
+
+type RepeatPolicy = "unlimited" | "per_day" | "per_week";
+
+function normalizePolicy(raw?: string | null): RepeatPolicy {
+  const v = (raw || "").toLowerCase();
+  if (v === "per_day" || v === "per_week" || v === "unlimited") return v;
+  // дефолт: запрещаем дубликаты в рамках недели
+  return "per_week";
+}
+
+async function isDuplicateByPolicy(env: Env, userID: string, kpiId: string, dateStr: string, policy: RepeatPolicy) {
+  if (policy === "unlimited") return false;
+
+  let from = dateStr;
+  let to   = dateStr;
+
+  if (policy === "per_week") {
+    const d = parseYMD(dateStr);
+    const { start, end } = getWeekBounds(d);
+    from = fmtYYYYMMDD(start);
+    to   = fmtYYYYMMDD(end);
+  }
+
+  const row = await one<{ ok: number }>(
+    env.DB,
+    `SELECT 1 AS ok
+       FROM progress
+      WHERE user_id=? AND kpi_id=?
+        AND date BETWEEN ? AND ?
+      LIMIT 1`,
+    [userID, kpiId, from, to]
+  );
+
+  return !!row;
 }
 
 /* ================ handlers ================= */
@@ -258,6 +299,15 @@ async function handleGetDeptProgress(env: Env) {
     weekPercent, monthPercent,
     goalMonth, goalPercent
   });
+}
+
+// helper: ISO week number
+function getWeekNumberISO(dIn: Date) {
+  const d = new Date(Date.UTC(dIn.getFullYear(), dIn.getMonth(), dIn.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
 // === users (текущая неделя + текущий месяц), поддерживает ?period=prev_week
@@ -445,32 +495,29 @@ async function handleBootstrap(env: Env, url: URL) {
   return ok({ dept, users: usersAgg, usersPrevWeek });
 }
 
-/* ---------- user KPIs: дата + repeat_policy ---------- */
-// GET /getprogress?scope=user&userID=...&date=YYYY-MM-DD
+// === user KPIs за указанный день/неделю с учётом политики
+// GET /getprogress?scope=user&userID=..[&date=YYYY-MM-DD]
 async function handleGetUserKPIs(env: Env, url: URL) {
   const userID = url.searchParams.get("userID");
   if (!userID) return err("userID required");
 
-  const dateStr = (url.searchParams.get("date") || fmtYYYYMMDD(new Date())).trim();
-  const policyRaw = (await getSetting(env, "repeat_policy")) || "unlimited";
-  const policy = policyRaw.toLowerCase();
-
-  let from = dateStr, to = dateStr;
-  if (policy === "per_week") {
-    const { start, end } = getWeekBounds(new Date(dateStr));
-    from = fmtYYYYMMDD(start);
-    to   = fmtYYYYMMDD(end);
-  } else if (policy === "unlimited") {
-    from = ""; to = "";
-  }
+  const dateStr = url.searchParams.get("date") || fmtYYYYMMDD(new Date());
+  const policy = normalizePolicy(await getSetting(env, "repeat_policy"));
 
   const kpis = await all<{ id: number; name: string; weight: number; category: string; active: number }>(
     env.DB,
     `SELECT id, name, weight, category, active FROM kpis WHERE active=1 ORDER BY weight DESC, id ASC`
   );
 
+  // при unlimited — все done=false (разрешаем повторы)
   let doneSet = new Set<number>();
   if (policy !== "unlimited") {
+    let from = dateStr, to = dateStr;
+    if (policy === "per_week") {
+      const d = parseYMD(dateStr);
+      const { start, end } = getWeekBounds(d);
+      from = fmtYYYYMMDD(start); to = fmtYYYYMMDD(end);
+    }
     const doneRows = await all<{ kpi_id: number }>(
       env.DB,
       `SELECT DISTINCT kpi_id FROM progress WHERE user_id = ? AND date BETWEEN ? AND ?`,
@@ -480,20 +527,18 @@ async function handleGetUserKPIs(env: Env, url: URL) {
   }
 
   const data = kpis.map(k => ({
-    KPI_ID: String(k.id), name: k.name, weight: Number(k.weight || 0),
-    done: policy === "unlimited" ? false : doneSet.has(k.id)
+    KPI_ID: String(k.id), name: k.name, weight: Number(k.weight || 0), done: doneSet.has(k.id)
   }));
 
-  return ok(data);
+  return jsonResp({ success: true, data, policy });
 }
 
-/* ---------- /recordkpi: проверка repeat_policy и 409 ---------- */
 // GET /recordkpi?userID=&kpiId=&actorEmail[&date=YYYY-MM-DD]
 async function handleRecordKPI(env: Env, url: URL) {
   const userID     = url.searchParams.get("userID");
   const kpiId      = url.searchParams.get("kpiId");
   const actorEmail = (url.searchParams.get("actorEmail") || "").trim().toLowerCase();
-  const dateStr    = (url.searchParams.get("date") || fmtYYYYMMDD(new Date())).trim();
+  const dateStr    = url.searchParams.get("date") || fmtYYYYMMDD(new Date());
 
   if (!userID || !kpiId)   return err("userID and kpiId required");
   if (!actorEmail)         return err("forbidden: actorEmail required", 403);
@@ -511,25 +556,10 @@ async function handleRecordKPI(env: Env, url: URL) {
   );
   if (!kpi) return err("invalid kpiId");
 
-  const policyRaw = (await getSetting(env, "repeat_policy")) || "unlimited";
-  const policy = policyRaw.toLowerCase();
-
-  if (policy !== "unlimited") {
-    let from = dateStr, to = dateStr;
-    if (policy === "per_week") {
-      const { start, end } = getWeekBounds(new Date(dateStr));
-      from = fmtYYYYMMDD(start);
-      to   = fmtYYYYMMDD(end);
-    }
-    const dup = await one<{ exists: number }>(
-      env.DB,
-      `SELECT 1 AS exists FROM progress WHERE user_id=? AND kpi_id=? AND date BETWEEN ? AND ? LIMIT 1`,
-      [userID, kpiId, from, to]
-    );
-    if (dup) {
-      await logEvent(env, "kpi_repeat_conflict", actorEmail, Number(userID), Number(kpiId), Number(kpi.weight || 0), { policy, date: dateStr });
-      return err("conflict: repeat-policy", 409);
-    }
+  const policy = normalizePolicy(await getSetting(env, "repeat_policy"));
+  if (await isDuplicateByPolicy(env, userID, kpiId, dateStr, policy)) {
+    // конфликт по политике повторов
+    return err("duplicate in selected period by repeat_policy", 409);
   }
 
   await env.DB
@@ -537,8 +567,17 @@ async function handleRecordKPI(env: Env, url: URL) {
     .bind(userID, dateStr, kpiId, kpi.weight || 0)
     .run();
 
+  // История (если есть таблица history — не критично, можно опустить при отсутствии)
+  try {
+    await env.DB
+      .prepare(`INSERT INTO history (user_id, ts, kpi_id, completed, score) VALUES (?, ?, ?, 1, ?)`)
+      .bind(userID, new Date().toISOString(), kpiId, kpi.weight || 0)
+      .run();
+  } catch {}
+
   await logEvent(env, "kpi_recorded_backend", actorEmail, Number(userID), Number(kpiId), Number(kpi.weight || 0), { date: dateStr });
 
+  // Инвалидация кэша агрегатов
   await purgeProgressCache(url);
 
   return ok({ userID, kpiId, score: kpi.weight || 0, date: dateStr });
@@ -589,8 +628,8 @@ async function logEvent(
 // GET /progress_list?userID=&from=YYYY-MM-DD&to=YYYY-MM-DD&limit=50
 async function handleProgressList(env: Env, url: URL) {
   const userID = url.searchParams.get("userID");
-  const from   = url.searchParams.get("from");
-  const to     = url.searchParams.get("to");
+  const from   = url.searchParams.get("from"); // inclusive
+  const to     = url.searchParams.get("to");   // inclusive
   const limit  = Math.max(1, Math.min(200, Number(url.searchParams.get("limit") || 50)));
 
   const conds: string[] = [];
@@ -637,6 +676,7 @@ async function handleProgressDelete(env: Env, url: URL) {
   await env.DB.prepare(`DELETE FROM progress WHERE rowid = ?`).bind(idStr).run();
   await logEvent(env, "progress_deleted", actorEmail, null, null, null, { id: idStr });
 
+  // инвалидация агрегатов (неделя/месяц)
   await purgeProgressCache(new URL(url.toString()));
   return ok({ id: Number(idStr) });
 }
@@ -968,6 +1008,8 @@ export default {
         res = await handleUserUpdate(env, url);
       } else if (route === "/user_delete") {
         res = await handleUserDelete(env, url);
+      } else if (route === "/getprogress") {
+        res = await handleGetProgress(env, url);
       } else {
         res = err("Invalid action", 400);
       }
