@@ -10,11 +10,16 @@ import {
   kpiUpdate,
   kpiDelete,
   settingsGet,
-  settingsSet
+  settingsSet,
+  // ↓ CRUD по пользователям
+  usersList,
+  userCreate,
+  userUpdate,
+  userDelete,
 } from './api.js';
 
 /**
- * Admin-панель (отметка KPI, история, CRUD задач, настройки)
+ * Admin-панель (отметка KPI, история, CRUD задач, настройки, пользователи)
  * @param {Array<{id:number, name:string, email:string, role:string}>} usersData
  */
 export function createAdminPanel(usersData = []) {
@@ -58,7 +63,7 @@ export function createAdminPanel(usersData = []) {
   const dateInp  = controlsCard.querySelector('#ap-date');
   const refreshBtn = controlsCard.querySelector('#ap-refresh');
 
-  // заполнение списка сотрудников
+  // заполнение списка сотрудников (только employee)
   userSel.innerHTML = '';
   if (employees.length === 0) {
     const opt = document.createElement('option');
@@ -186,6 +191,42 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(settingsCard);
 
+  // === Пользователи (добавление, роли, активность) — НИЖЕ «Настройки» ===
+  const usersCard = document.createElement('div');
+  usersCard.className = 'card mt-4';
+  usersCard.innerHTML = `
+    <div class="card-body">
+      <h5 class="card-title mb-3">Пользователи</h5>
+
+      <div class="border rounded p-3 mb-3">
+        <div class="row g-2 align-items-end toolbar-sm">
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-1">Имя</label>
+            <input type="text" class="form-control form-control-sm" id="u-new-name" placeholder="Иван Иванов" />
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-1">Email</label>
+            <input type="email" class="form-control form-control-sm" id="u-new-email" placeholder="user@example.com" />
+          </div>
+          <div class="col-6 col-md-2">
+            <label class="form-label mb-1">Роль</label>
+            <select class="form-select form-select-sm" id="u-new-role">
+              <option value="employee">employee</option>
+              <option value="admin">admin</option>
+              <option value="observer">observer</option>
+            </select>
+          </div>
+          <div class="col-6 col-md-2 d-grid">
+            <button class="btn btn-success btn-sm" id="u-new-add">Добавить</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="users-crud-list"></div>
+    </div>
+  `;
+  container.appendChild(usersCard);
+
   // refs
   const kpiListBox   = colLeft.querySelector('#ap-kpi-list');
   const histBox      = colRight.querySelector('#ap-history');
@@ -204,6 +245,13 @@ export function createAdminPanel(usersData = []) {
   const stPolicy = settingsCard.querySelector('#st-policy');
   const stScope  = settingsCard.querySelector('#st-scope');
   const stSave   = settingsCard.querySelector('#st-save');
+
+  // users refs
+  const uNewName = usersCard.querySelector('#u-new-name');
+  const uNewEmail= usersCard.querySelector('#u-new-email');
+  const uNewRole = usersCard.querySelector('#u-new-role');
+  const uNewAdd  = usersCard.querySelector('#u-new-add');
+  const usersCrudListBox = usersCard.querySelector('#users-crud-list');
 
   // === Вспомогательные ===
   function getActorEmail() {
@@ -267,7 +315,7 @@ export function createAdminPanel(usersData = []) {
         tdWeight.textContent = String(kpi.weight ?? 0);
 
         const tdDate = document.createElement('td');
-        tdDate.textContent = selectedDate; // только дата, без «дата:»
+        tdDate.textContent = selectedDate; // только дата
 
         const tdStatus = document.createElement('td');
         tdStatus.innerHTML = kpi.done
@@ -539,6 +587,147 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
+  // === Пользователи: список + правки ===
+  async function renderUsersCrudList(container) {
+    container.innerHTML = `
+      <div class="d-flex align-items-center gap-2 my-2">
+        <div class="spinner-border" role="status" aria-hidden="true"></div>
+        <span>Загружаем пользователей…</span>
+      </div>
+    `;
+    try {
+      const rows = await usersList({ includeInactive: true });
+      container.innerHTML = '';
+
+      if (!rows.length) {
+        container.innerHTML = `<div class="text-secondary">Пользователей нет.</div>`;
+        return;
+      }
+
+      const table = document.createElement('table');
+      table.className = 'table table-sm align-middle table-compact';
+      table.innerHTML = `
+        <thead>
+          <tr>
+            <th>Имя</th>
+            <th style="width:240px;">Email</th>
+            <th style="width:160px;">Роль</th>
+            <th style="width:120px;">Активен</th>
+            <th style="width:1%; white-space:nowrap;"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      `;
+      const tbody = table.querySelector('tbody');
+
+      rows.forEach(u => {
+        const tr = document.createElement('tr');
+
+        // Имя
+        const tdName = document.createElement('td');
+        const inpName = document.createElement('input');
+        inpName.type = 'text';
+        inpName.className = 'form-control form-control-sm';
+        inpName.value = u.name || '';
+        tdName.appendChild(inpName);
+
+        // Email
+        const tdEmail = document.createElement('td');
+        const inpEmail = document.createElement('input');
+        inpEmail.type = 'email';
+        inpEmail.className = 'form-control form-control-sm';
+        inpEmail.value = u.email || '';
+        tdEmail.appendChild(inpEmail);
+
+        // Роль
+        const tdRole = document.createElement('td');
+        const selRole = document.createElement('select');
+        selRole.className = 'form-select form-select-sm';
+        ['employee','admin','observer'].forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r; opt.textContent = r;
+          if (String(u.role||'').toLowerCase() === r) opt.selected = true;
+          selRole.appendChild(opt);
+        });
+        tdRole.appendChild(selRole);
+
+        // Активен
+        const tdActive = document.createElement('td');
+        const sw = document.createElement('input');
+        sw.type = 'checkbox';
+        sw.className = 'form-check-input';
+        sw.checked = !!u.active;
+        tdActive.appendChild(sw);
+
+        // Действия
+        const tdActions = document.createElement('td');
+        tdActions.className = 'd-flex gap-2';
+        const btnSave = document.createElement('button');
+        btnSave.className = 'btn btn-primary btn-sm';
+        btnSave.textContent = 'Сохранить';
+
+        const btnToggle = document.createElement('button');
+        btnToggle.className = 'btn btn-outline-danger btn-sm';
+        btnToggle.textContent = u.active ? 'Деактивировать' : 'Активировать';
+
+        tdActions.append(btnSave, btnToggle);
+
+        tr.append(tdName, tdEmail, tdRole, tdActive, tdActions);
+        tbody.appendChild(tr);
+
+        btnSave.addEventListener('click', async () => {
+          const actorEmail = getActorEmail();
+          if (!actorEmail) { alert('Нет email администратора (перелогиньтесь).'); return; }
+          const name = String(inpName.value || '').trim();
+          const email = String(inpEmail.value || '').trim().toLowerCase();
+          const role  = String(selRole.value || 'employee');
+          const active = !!sw.checked;
+
+          if (!name || !email.includes('@')) {
+            alert('Заполните корректно имя и email.');
+            return;
+          }
+          btnSave.disabled = btnToggle.disabled = true;
+          try {
+            await userUpdate({ id: u.id, name, email, role, active, actorEmail });
+            try { await logEvent('user_updated_ui', { id: u.id, name, email, role, active, actorEmail }); } catch {}
+            await renderUsersCrudList(container);
+          } catch (e) {
+            console.error(e);
+            alert('Не удалось сохранить пользователя.');
+          } finally {
+            btnSave.disabled = btnToggle.disabled = false;
+          }
+        });
+
+        btnToggle.addEventListener('click', async () => {
+          const actorEmail = getActorEmail();
+          if (!actorEmail) { alert('Нет email администратора (перелогиньтесь).'); return; }
+          btnSave.disabled = btnToggle.disabled = true;
+          try {
+            if (u.active) {
+              if (!confirm('Деактивировать пользователя?')) { btnSave.disabled = btnToggle.disabled = false; return; }
+              await userDelete({ id: u.id, actorEmail });
+            } else {
+              await userUpdate({ id: u.id, active: true, actorEmail });
+            }
+            await renderUsersCrudList(container);
+          } catch (e) {
+            console.error(e);
+            alert('Не удалось изменить активность пользователя.');
+          } finally {
+            btnSave.disabled = btnToggle.disabled = false;
+          }
+        });
+      });
+
+      container.appendChild(table);
+    } catch (e) {
+      console.error(e);
+      container.innerHTML = `<div class="alert alert-danger">Ошибка загрузки пользователей.</div>`;
+    }
+  }
+
   // === Настройки: рендер/загрузка/сохранение ===
   async function loadSettings() {
     try {
@@ -581,6 +770,34 @@ export function createAdminPanel(usersData = []) {
     }
   });
 
+  // Добавление пользователя
+  uNewAdd.addEventListener('click', async () => {
+    const name  = String(uNewName.value || '').trim();
+    const email = String(uNewEmail.value || '').trim().toLowerCase();
+    const role  = String(uNewRole.value || 'employee');
+    if (!name || !email.includes('@')) {
+      alert('Укажите корректные имя и email.');
+      return;
+    }
+    const actorEmail = getActorEmail();
+    if (!actorEmail) { alert('Нет email администратора (перелогиньтесь).'); return; }
+
+    uNewAdd.disabled = true;
+    try {
+      await userCreate({ name, email, role, actorEmail });
+      try { await logEvent('user_created_ui', { name, email, role, actorEmail }); } catch {}
+      uNewName.value = '';
+      uNewEmail.value = '';
+      uNewRole.value = 'employee';
+      await renderUsersCrudList(usersCrudListBox);
+    } catch (e) {
+      console.error(e);
+      alert('Не удалось создать пользователя.');
+    } finally {
+      uNewAdd.disabled = false;
+    }
+  });
+
   // === События и первичная отрисовка ===
   async function refreshAll() {
     const userId = userSel.value;
@@ -589,6 +806,7 @@ export function createAdminPanel(usersData = []) {
       renderHistoryFor(userId),
       renderKpiCrudList(kpiCrudList),
       loadSettings(),
+      renderUsersCrudList(usersCrudListBox),
     ]);
   }
 
