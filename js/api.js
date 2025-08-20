@@ -1,4 +1,3 @@
-// js/api.js
 import { API_BASE } from './config.js';
 
 async function toJSON(res) {
@@ -30,16 +29,13 @@ export async function getProgress(scope, userID) {
   const params = { scope }; if (userID) params.userID = userID;
   return httpGet('/getprogress', params);
 }
-
-/**
- * Получить список KPI для пользователя с признаком "done"
- * на выбранную дату с учётом политики повторов (repeat_policy).
- * @param {string|number} userID
- * @param {{date?: string}} opts  — ISO дата YYYY-MM-DD
- */
-export async function getUserKPIs(userID, opts = {}) {
-  const { date } = opts;
-  return httpGet('/getprogress', { scope: 'user', userID, date });
+export async function getUserKPIs(userID, period = 'this_week') {
+  // оставлено для обратной совместимости (на бэке period не используется)
+  return httpGet('/getprogress', { scope: 'user', userID, period });
+}
+// НОВОЕ: KPI пользователя на конкретную дату (для корректного флага "done" по repeat_policy)
+export async function getUserKPIsByDate(userID, dateYMD) {
+  return httpGet('/getprogress', { scope: 'user', userID, date: dateYMD });
 }
 
 export async function getUsersAggregate(period = 'this_week') {
