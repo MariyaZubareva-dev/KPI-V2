@@ -1,4 +1,4 @@
-import { logEvent, bootstrap as apiBootstrap, leaderboard as apiLeaderboard } from './api.js';
+import { logEvent, bootstrap as apiBootstrap } from './api.js';
 import {
   createProgressBar,
   createUsersTable,
@@ -34,14 +34,14 @@ export async function renderDashboard(user) {
 
   const employeeSection = document.createElement('section'); employeeSection.id = 'employee-section';
   const deptSection     = document.createElement('section'); deptSection.id    = 'dept-section';
-  const leaderWeekSec   = document.createElement('section'); leaderWeekSec.id  = 'leader-week';
-  const leaderMonthSec  = document.createElement('section'); leaderMonthSec.id = 'leader-month';
+  const leadersRow      = document.createElement('section'); leadersRow.id     = 'leaders-row';
   const tableSection    = document.createElement('section'); tableSection.id   = 'users-table';
 
+  // размещаем: если сотрудник — его панель + лидеры рядом; иначе — департамент + лидеры рядом
   if (role === 'employee') {
-    app.append(employeeSection, leaderWeekSec, leaderMonthSec, tableSection);
+    app.append(employeeSection, leadersRow, tableSection);
   } else {
-    app.append(deptSection, leaderWeekSec, leaderMonthSec, tableSection);
+    app.append(deptSection, leadersRow, tableSection);
   }
 
   const loader = createLoader('Загружаем данные…');
@@ -68,10 +68,10 @@ export async function renderDashboard(user) {
   }
   function fmtDDMM(d) { return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }); }
 
-  function buildLeaderWeekHeader() {
+  function leaderWeekHeader() {
     const wrap = document.createElement('div');
     const h4 = document.createElement('h4'); h4.textContent = 'ТОП-3 за неделю';
-    const sub = document.createElement('div'); sub.className = 'text-terтиary caption mt-1';
+    const sub = document.createElement('div'); sub.className = 'text-tertiary caption mt-1';
     const { start, end } = getLastFullWeekBounds();
     sub.textContent = `за прошлую неделю (Пн ${fmtDDMM(start)} — Вс ${fmtDDMM(end)})`;
     wrap.append(h4, sub);
@@ -101,7 +101,7 @@ export async function renderDashboard(user) {
     const goalPercent     = Number(deptData?.goalPercent ?? Math.min(100, deptMonthPoints));
     const goalMonth       = Number(deptData?.goalMonth || 100);
 
-    // Прогресс отдела: ширина = % выполнения цели, число = реальные баллы
+    // Прогресс отдела: ширина = % цели, число = реальные баллы
     {
       const h = document.createElement('h3'); h.textContent = `Прогресс отдела (месяц) • цель ${goalMonth}`;
       const bar = createProgressBar(goalPercent, {
@@ -132,6 +132,25 @@ export async function renderDashboard(user) {
 
     grid.append(colWeek, colMonth);
     employeeSection.append(grid);
+  }
+
+  // общий рендер лидеров РЯДОМ (две колонки)
+  function renderLeadersSideBySide(employeesPrevW, employeesCurrM) {
+    leadersRow.innerHTML = '';
+    const row = document.createElement('div');
+    row.className = 'row g-4';
+
+    const colWeek = document.createElement('div');
+    colWeek.className = 'col-12 col-lg-6';
+    colWeek.append(leaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
+
+    const colMonth = document.createElement('div');
+    colMonth.className = 'col-12 col-lg-6';
+    const h4Month = document.createElement('h4'); h4Month.textContent = 'ТОП-3 за месяц';
+    colMonth.append(h4Month, createLeaderboard(employeesCurrM, 'month'));
+
+    row.append(colWeek, colMonth);
+    leadersRow.append(row);
   }
 
   async function refreshDashboardData() {
@@ -165,19 +184,16 @@ export async function renderDashboard(user) {
       deptSection.append(deptTitle, bar);
     }
 
-    leaderWeekSec.innerHTML = '';
-    leaderWeekSec.append(buildLeaderWeekHeader(), createLeaderboard(employeesPrevW, 'week'));
+    // ТОП-3: неделя и месяц РЯДОМ
+    renderLeadersSideBySide(employeesPrevW, employees);
 
-    leaderMonthSec.innerHTML = '';
-    const h4Month = document.createElement('h4');
-    h4Month.textContent = 'ТОП-3 за месяц';
-    leaderMonthSec.append(h4Month, createLeaderboard(employees, 'month'));
-
+    // Таблица сотрудников
     tableSection.innerHTML = '';
     const tableTitle = document.createElement('h4');
     tableTitle.textContent = 'Сотрудники и баллы';
     tableSection.append(tableTitle, createUsersTable(employees));
 
+    // Детальный рейтинг (для админа)
     if (role === 'admin' && !document.getElementById('rating-section')) {
       renderRatingSection(app);
     }
@@ -197,8 +213,7 @@ export async function renderDashboard(user) {
     app.append(adminModule.createAdminPanel(lastEmployees));
   }
 
-  /* ===== секция детального рейтинга (для админа) ===== */
-
+  /* ===== секция детального рейтинга (для админа) (без изменений рендер-логики таблицы) ===== */
   function renderRatingSection(root) {
     const ratingSection = document.createElement('section');
     ratingSection.id = 'rating-section';
@@ -209,7 +224,7 @@ export async function renderDashboard(user) {
     card.innerHTML = `
       <div class="card-body">
         <h4 class="card-title mb-3">Детальная таблица рейтинга</h4>
-        <div class="row g-2 align-items-end toolbar-sm mb-3">
+        <div class="row g-2 align-items-end">
           <div class="col-6 col-md-3">
             <label class="form-label mb-1">С</label>
             <input type="date" class="form-control form-control-sm" id="rt-from" />
@@ -258,7 +273,7 @@ export async function renderDashboard(user) {
     const prev = weekBounds(prevStart);
     setDateRange(prev.from, prev.to);
 
-    card.querySelector('#rt-this-week').addEventListener('click', () => setDateRange(...Object.values(weekBounds(new Date()))));
+    card.querySelector('#rt-this-week').addEventListener('click', () => { const r=weekBounds(new Date()); setDateRange(r.from, r.to); });
     card.querySelector('#rt-prev-week').addEventListener('click', () => setDateRange(prev.from, prev.to));
     card.querySelector('#rt-this-month').addEventListener('click', () => { const m = thisMonth(); setDateRange(m.from, m.to); });
     card.querySelector('#rt-last-month').addEventListener('click', () => { const m = lastMonth(); setDateRange(m.from, m.to); });
@@ -271,20 +286,21 @@ export async function renderDashboard(user) {
         </div>
       `;
       try {
-        const rows = await apiLeaderboard({ from: fromInp.value, to: toInp.value, includeAll: false });
+        const { leaderboard } = await import('./api.js');
+        const rows = await leaderboard({ from: fromInp.value, to: toInp.value, includeAll: false });
         if (!rows.length) {
           tbl.innerHTML = `<div class="text-secondary">Нет данных за период.</div>`;
           return;
         }
 
         const table = document.createElement('table');
-        table.className = 'table table-striped table-compact align-middle';
+        table.className = 'table table-striped table-sm align-middle';
         table.innerHTML = `
           <thead>
             <tr>
               <th style="width:60px;">#</th>
               <th>Сотрудник</th>
-              <th style="width:220px;">Email</th>
+              <th style="width:200px;">Email</th>
               <th style="width:120px;">Баллы</th>
             </tr>
           </thead>

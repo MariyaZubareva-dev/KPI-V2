@@ -11,7 +11,6 @@ import {
   kpiDelete,
   settingsGet,
   settingsSet,
-  // ↓ CRUD по пользователям
   usersList,
   userCreate,
   userUpdate,
@@ -20,24 +19,22 @@ import {
 
 /**
  * Admin-панель (отметка KPI, история, CRUD задач, настройки, пользователи)
- * @param {Array<{id:number, name:string, email:string, role:string}>} usersData
+ * + привязка сотрудников к админам и админов к отделам
  */
 export function createAdminPanel(usersData = []) {
   const employees = Array.isArray(usersData)
     ? usersData.filter(u => String(u.role || '').toLowerCase() === 'employee')
     : [];
 
-  // корневой контейнер
   const container = document.createElement('section');
   container.id = 'admin-panel';
   container.className = 'mt-5';
 
-  // заголовок
   const title = document.createElement('h3');
   title.textContent = 'Admin-панель';
   container.appendChild(title);
 
-  // === Панель управления (выбор пользователя и даты) ===
+  /* ---------- панель выбора сотрудника и даты ---------- */
   const controlsCard = document.createElement('div');
   controlsCard.className = 'card mb-4';
   controlsCard.innerHTML = `
@@ -63,7 +60,6 @@ export function createAdminPanel(usersData = []) {
   const dateInp  = controlsCard.querySelector('#ap-date');
   const refreshBtn = controlsCard.querySelector('#ap-refresh');
 
-  // заполнение списка сотрудников (только employee)
   userSel.innerHTML = '';
   if (employees.length === 0) {
     const opt = document.createElement('option');
@@ -78,18 +74,13 @@ export function createAdminPanel(usersData = []) {
       userSel.appendChild(opt);
     });
   }
-
-  // дефолтная дата — сегодня
   dateInp.valueAsDate = new Date();
-
-  // выберем первого сотрудника по умолчанию
   if (employees.length) userSel.value = String(employees[0].id);
 
-  // === Основной двухколоночный блок: слева KPI, справа История ===
+  /* ---------- две колонки: KPI и История ---------- */
   const twoCol = document.createElement('div');
   twoCol.className = 'row';
 
-  // Левая колонка — список KPI / отметка (немного шире)
   const colLeft = document.createElement('div');
   colLeft.className = 'col-12 col-lg-7';
   colLeft.innerHTML = `
@@ -101,7 +92,6 @@ export function createAdminPanel(usersData = []) {
     </div>
   `;
 
-  // Правая колонка — история (чуть уже)
   const colRight = document.createElement('div');
   colRight.className = 'col-12 col-lg-5';
   colRight.innerHTML = `
@@ -124,11 +114,10 @@ export function createAdminPanel(usersData = []) {
       </div>
     </div>
   `;
-
   twoCol.append(colLeft, colRight);
   container.appendChild(twoCol);
 
-  // === CRUD задач (KPI) ===
+  /* ---------- CRUD задач (KPI) ---------- */
   const kpiCrudCard = document.createElement('div');
   kpiCrudCard.className = 'card mt-4';
   kpiCrudCard.innerHTML = `
@@ -156,7 +145,7 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(kpiCrudCard);
 
-  // === Настройки (глобальная цель + политики) ===
+  /* ---------- Настройки (цель + политики) ---------- */
   const settingsCard = document.createElement('div');
   settingsCard.className = 'card mt-4';
   settingsCard.innerHTML = `
@@ -191,7 +180,7 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(settingsCard);
 
-  // === Пользователи (добавление, роли, активность) — НИЖЕ «Настройки» ===
+  /* ---------- Пользователи (добавление + привязки) ---------- */
   const usersCard = document.createElement('div');
   usersCard.className = 'card mt-4';
   usersCard.innerHTML = `
@@ -227,7 +216,7 @@ export function createAdminPanel(usersData = []) {
   `;
   container.appendChild(usersCard);
 
-  // refs
+  /* ---------- refs ---------- */
   const kpiListBox   = colLeft.querySelector('#ap-kpi-list');
   const histBox      = colRight.querySelector('#ap-history');
   const histFromInp  = colRight.querySelector('#ap-hist-from');
@@ -240,20 +229,18 @@ export function createAdminPanel(usersData = []) {
   const kpiNewWeight = kpiCrudCard.querySelector('#kpi-new-weight');
   const kpiAddBtn    = kpiCrudCard.querySelector('#kpi-new-add');
 
-  // settings refs
   const stGoal   = settingsCard.querySelector('#st-goal');
   const stPolicy = settingsCard.querySelector('#st-policy');
   const stScope  = settingsCard.querySelector('#st-scope');
   const stSave   = settingsCard.querySelector('#st-save');
 
-  // users refs
   const uNewName = usersCard.querySelector('#u-new-name');
   const uNewEmail= usersCard.querySelector('#u-new-email');
   const uNewRole = usersCard.querySelector('#u-new-role');
   const uNewAdd  = usersCard.querySelector('#u-new-add');
   const usersCrudListBox = usersCard.querySelector('#users-crud-list');
 
-  // === Вспомогательные ===
+  /* ---------- helpers ---------- */
   function getActorEmail() {
     try {
       const u = JSON.parse(localStorage.getItem('user') || '{}');
@@ -268,7 +255,7 @@ export function createAdminPanel(usersData = []) {
     return `${y}-${m}-${day}`;
   }
 
-  // === Рендер списка KPI для отметки (таблица) ===
+  /* ---------- KPI список (таблица) ---------- */
   async function renderKpiListFor(userId) {
     kpiListBox.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
@@ -315,7 +302,7 @@ export function createAdminPanel(usersData = []) {
         tdWeight.textContent = String(kpi.weight ?? 0);
 
         const tdDate = document.createElement('td');
-        tdDate.textContent = selectedDate; // только дата
+        tdDate.textContent = selectedDate;
 
         const tdStatus = document.createElement('td');
         tdStatus.innerHTML = kpi.done
@@ -350,7 +337,6 @@ export function createAdminPanel(usersData = []) {
             } catch {}
 
             await Promise.all([ renderKpiListFor(userId), renderHistoryFor(userId) ]);
-
             document.dispatchEvent(new CustomEvent('kpi:recorded', {
               detail: { userID: String(userId), kpiId: String(kpi.KPI_ID) }
             }));
@@ -374,7 +360,7 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-  // === История отметок ===
+  /* ---------- История ---------- */
   async function renderHistoryFor(userId) {
     histBox.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
@@ -441,9 +427,9 @@ export function createAdminPanel(usersData = []) {
             try { await logEvent('progress_deleted_ui', { id: r.id, actorEmail }); } catch {}
             await Promise.all([
               renderHistoryFor(userId),
-              renderKpiListFor(userId), // на случай, если удалили отметку текущей недели
+              renderKpiListFor(userId),
             ]);
-            document.dispatchEvent(new CustomEvent('kpi:recorded')); // чтобы дашборд пересчитался
+            document.dispatchEvent(new CustomEvent('kpi:recorded'));
           } catch (e) {
             console.error(e);
             alert('Не удалось удалить запись.');
@@ -463,7 +449,7 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-  // === CRUD: список KPI с редактированием ===
+  /* ---------- CRUD KPI таблица ---------- */
   async function renderKpiCrudList(container) {
     container.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
@@ -587,7 +573,61 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-  // === Пользователи: список + правки ===
+  /* ---------- Пользователи: список + привязки (employee→admin, admin→department) ---------- */
+
+  async function fetchAdminDepartmentsMap(admins) {
+    const map = {};
+    for (const a of admins) {
+      try {
+        const r = await settingsGet(`dept_${a.id}`);
+        map[a.id] = (r?.value ?? r ?? '').trim();
+      } catch { map[a.id] = ''; }
+    }
+    return map;
+  }
+
+  function renderMgrDeptCell(u, admins, deptMap) {
+    const cell = document.createElement('td');
+
+    if (String(u.role || '').toLowerCase() === 'employee') {
+      // селект менеджера (админа)
+      const sel = document.createElement('select');
+      sel.className = 'form-select form-select-sm';
+      const optNone = document.createElement('option');
+      optNone.value = '';
+      optNone.textContent = '— не назначен —';
+      sel.appendChild(optNone);
+
+      admins.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = String(a.id);
+        opt.textContent = a.name || a.email || `admin #${a.id}`;
+        if (String(u.manager_id ?? '') === String(a.id)) opt.selected = true;
+        sel.appendChild(opt);
+      });
+
+      sel.dataset.kind = 'manager';
+      cell.appendChild(sel);
+      return { cell, control: sel };
+    }
+
+    if (String(u.role || '').toLowerCase() === 'admin') {
+      // поле "отдел" для админа
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'form-control form-control-sm';
+      inp.placeholder = 'Название отдела';
+      inp.value = deptMap[u.id] || '';
+      inp.dataset.kind = 'department';
+      cell.appendChild(inp);
+      return { cell, control: inp };
+    }
+
+    // observer — пустая ячейка
+    cell.innerHTML = `<span class="text-tertiary small">—</span>`;
+    return { cell, control: null };
+  }
+
   async function renderUsersCrudList(container) {
     container.innerHTML = `
       <div class="d-flex align-items-center gap-2 my-2">
@@ -604,6 +644,9 @@ export function createAdminPanel(usersData = []) {
         return;
       }
 
+      const admins = rows.filter(u => String(u.role || '').toLowerCase() === 'admin' && u.active);
+      const deptMap = await fetchAdminDepartmentsMap(admins);
+
       const table = document.createElement('table');
       table.className = 'table table-sm align-middle table-compact';
       table.innerHTML = `
@@ -611,8 +654,9 @@ export function createAdminPanel(usersData = []) {
           <tr>
             <th>Имя</th>
             <th style="width:240px;">Email</th>
-            <th style="width:160px;">Роль</th>
-            <th style="width:120px;">Активен</th>
+            <th style="width:180px;">Роль</th>
+            <th style="width:220px;">Админ / Отдел</th>
+            <th style="width:100px;">Активен</th>
             <th style="width:1%; white-space:nowrap;"></th>
           </tr>
         </thead>
@@ -651,6 +695,9 @@ export function createAdminPanel(usersData = []) {
         });
         tdRole.appendChild(selRole);
 
+        // Админ / Отдел (динамическая ячейка)
+        const { cell: tdMgrDept, control: mgrDeptControlInitial } = renderMgrDeptCell(u, admins, deptMap);
+
         // Активен
         const tdActive = document.createElement('td');
         const sw = document.createElement('input');
@@ -672,12 +719,21 @@ export function createAdminPanel(usersData = []) {
 
         tdActions.append(btnSave, btnToggle);
 
-        tr.append(tdName, tdEmail, tdRole, tdActive, tdActions);
+        tr.append(tdName, tdEmail, tdRole, tdMgrDept, tdActive, tdActions);
         tbody.appendChild(tr);
+
+        // при смене роли — перестраиваем ячейку привязки
+        selRole.addEventListener('change', () => {
+          const newRole = selRole.value;
+          const fresh = renderMgrDeptCell({ ...u, role: newRole }, admins, deptMap);
+          tdMgrDept.replaceChildren(...fresh.cell.childNodes);
+          tdMgrDept.dataset.kind = fresh.cell.dataset?.kind || '';
+        });
 
         btnSave.addEventListener('click', async () => {
           const actorEmail = getActorEmail();
           if (!actorEmail) { alert('Нет email администратора (перелогиньтесь).'); return; }
+
           const name = String(inpName.value || '').trim();
           const email = String(inpEmail.value || '').trim().toLowerCase();
           const role  = String(selRole.value || 'employee');
@@ -687,9 +743,32 @@ export function createAdminPanel(usersData = []) {
             alert('Заполните корректно имя и email.');
             return;
           }
+
+          // определим контроль в ячейке «Админ / Отдел»
+          const ctrl = tdMgrDept.querySelector('select, input');
+          const ctrlKind = ctrl?.dataset?.kind || tdMgrDept.dataset.kind || '';
+
+          const calls = [];
+
+          // user_update с базовыми полями
+          const baseUpdate = { id: u.id, name, email, role, active, actorEmail };
+
+          if (ctrlKind === 'manager' && role === 'employee') {
+            baseUpdate.manager_id = ctrl.value || '';
+          } else if (role !== 'employee') {
+            baseUpdate.manager_id = ''; // очистим связь при смене роли
+          }
+          calls.push(userUpdate(baseUpdate));
+
+          // для админа — сохранить отдел через settings_set
+          if (ctrlKind === 'department' && role === 'admin') {
+            const dept = String(ctrl.value || '').trim();
+            calls.push(settingsSet(`dept_${u.id}`, dept || '', actorEmail));
+          }
+
           btnSave.disabled = btnToggle.disabled = true;
           try {
-            await userUpdate({ id: u.id, name, email, role, active, actorEmail });
+            await Promise.all(calls);
             try { await logEvent('user_updated_ui', { id: u.id, name, email, role, active, actorEmail }); } catch {}
             await renderUsersCrudList(container);
           } catch (e) {
@@ -728,7 +807,7 @@ export function createAdminPanel(usersData = []) {
     }
   }
 
-  // === Настройки: рендер/загрузка/сохранение ===
+  /* ---------- Настройки: загрузка/сохранение ---------- */
   async function loadSettings() {
     try {
       const goalResp = await settingsGet('month_goal');
@@ -770,7 +849,7 @@ export function createAdminPanel(usersData = []) {
     }
   });
 
-  // Добавление пользователя
+  /* ---------- Добавление пользователя ---------- */
   uNewAdd.addEventListener('click', async () => {
     const name  = String(uNewName.value || '').trim();
     const email = String(uNewEmail.value || '').trim().toLowerCase();
@@ -798,7 +877,7 @@ export function createAdminPanel(usersData = []) {
     }
   });
 
-  // === События и первичная отрисовка ===
+  /* ---------- события и первичная отрисовка ---------- */
   async function refreshAll() {
     const userId = userSel.value;
     await Promise.all([
@@ -812,18 +891,14 @@ export function createAdminPanel(usersData = []) {
 
   userSel.addEventListener('change', refreshAll);
   refreshBtn.addEventListener('click', refreshAll);
-  dateInp.addEventListener('change', () => {
-    renderKpiListFor(userSel.value);
-  });
+  dateInp.addEventListener('change', () => { renderKpiListFor(userSel.value); });
 
-  histApplyBtn.addEventListener('click', () => renderHistoryFor(userSel.value));
+  const histApply = () => renderHistoryFor(userSel.value);
+  histApplyBtn.addEventListener('click', histApply);
   histClearBtn.addEventListener('click', () => {
-    histFromInp.value = '';
-    histToInp.value = '';
-    renderHistoryFor(userSel.value);
+    histFromInp.value = ''; histToInp.value = ''; histApply();
   });
 
-  // обработчик создания KPI
   kpiAddBtn.addEventListener('click', async () => {
     const name = String(kpiNewName.value || '').trim();
     const weight = Number(kpiNewWeight.value);
@@ -851,8 +926,6 @@ export function createAdminPanel(usersData = []) {
     }
   });
 
-  // первичный рендер
   refreshAll();
-
   return container;
 }
