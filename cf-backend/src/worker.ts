@@ -94,12 +94,6 @@ function fmtYYYYMMDD(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-function parseYMD(s: string): Date {
-  // безопасно: трактуем как локальную дату (без часового смещения)
-  const [y, m, d] = s.split("-").map(n => Number(n));
-  return new Date(y, (m - 1), d);
-}
-
 /* ================ SQL helpers ================= */
 
 async function one<T = any>(db: D1Database, sql: string, bind: any[] = []): Promise<T | null> {
@@ -168,43 +162,6 @@ async function setSetting(env: Env, key: string, value: string): Promise<void> {
   ).bind(key, value).run();
 }
 
-/* ============ repeat policy helpers ============ */
-
-type RepeatPolicy = "unlimited" | "per_day" | "per_week";
-
-function normalizePolicy(raw?: string | null): RepeatPolicy {
-  const v = (raw || "").toLowerCase();
-  if (v === "per_day" || v === "per_week" || v === "unlimited") return v;
-  // дефолт: запрещаем дубликаты в рамках недели
-  return "per_week";
-}
-
-async function isDuplicateByPolicy(env: Env, userID: string, kpiId: string, dateStr: string, policy: RepeatPolicy) {
-  if (policy === "unlimited") return false;
-
-  let from = dateStr;
-  let to   = dateStr;
-
-  if (policy === "per_week") {
-    const d = parseYMD(dateStr);
-    const { start, end } = getWeekBounds(d);
-    from = fmtYYYYMMDD(start);
-    to   = fmtYYYYMMDD(end);
-  }
-
-  const row = await one<{ ok: number }>(
-    env.DB,
-    `SELECT 1 AS ok
-       FROM progress
-      WHERE user_id=? AND kpi_id=?
-        AND date BETWEEN ? AND ?
-      LIMIT 1`,
-    [userID, kpiId, from, to]
-  );
-
-  return !!row;
-}
-
 /* ================ handlers ================= */
 
 async function handlePing() { return ok({ ok: true, pong: true }); }
@@ -237,28 +194,38 @@ async function handleGetProgress(env: Env, url: URL) {
   return err("Unknown scope");
 }
 
-// === department
+/* ================= department ================== */
+// ВАЖНО: считаем только по активным employee
 async function handleGetDeptProgress(env: Env) {
   const now = new Date();
   const { start, end } = getWeekBounds(now);
   const month = now.getMonth();
   const year  = now.getFullYear();
+  const yyyy  = String(year);
+  const mm    = `${month + 1}`.padStart(2, "0");
 
   const weekSumRow = await one<{ sum: number }>(
     env.DB,
-    `SELECT COALESCE(SUM(score),0) AS sum
-     FROM progress
-     WHERE date BETWEEN ? AND ?`,
+    `SELECT COALESCE(SUM(p.score),0) AS sum
+       FROM progress p
+       JOIN users u ON u.id = p.user_id
+      WHERE u.active = 1
+        AND lower(u.role) = 'employee'
+        AND p.date BETWEEN ? AND ?`,
     [fmtYYYYMMDD(start), fmtYYYYMMDD(end)]
   );
   const weekSum = Number(weekSumRow?.sum || 0);
 
   const monthSumRow = await one<{ sum: number }>(
     env.DB,
-    `SELECT COALESCE(SUM(score),0) AS sum
-     FROM progress
-     WHERE strftime('%Y', date)=? AND strftime('%m', date)=?`,
-    [String(year), `${month + 1}`.padStart(2, "0")]
+    `SELECT COALESCE(SUM(p.score),0) AS sum
+       FROM progress p
+       JOIN users u ON u.id = p.user_id
+      WHERE u.active = 1
+        AND lower(u.role) = 'employee'
+        AND strftime('%Y', p.date)=?
+        AND strftime('%m', p.date)=?`,
+    [yyyy, mm]
   );
   const monthSum = Number(monthSumRow?.sum || 0);
 
@@ -309,6 +276,8 @@ function getWeekNumberISO(dIn: Date) {
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
+
+/* ================ users aggregates ================ */
 
 // === users (текущая неделя + текущий месяц), поддерживает ?period=prev_week
 async function handleGetUsersProgress(env: Env, url: URL) {
@@ -380,29 +349,40 @@ async function handleGetUsersProgressLastWeek(env: Env) {
   return ok(data);
 }
 
-// === /bootstrap — единый батч
+/* ================ /bootstrap ================= */
+
 async function handleBootstrap(env: Env, url: URL) {
   // department
   const now = new Date();
   const { start, end } = getWeekBounds(now);
   const month = now.getMonth();
   const year  = now.getFullYear();
+  const yyyy  = String(year);
+  const mm    = `${month + 1}`.padStart(2, "0");
 
+  // СУММЫ ТОЛЬКО по активным employee
   const weekSumRow = await one<{ sum: number }>(
     env.DB,
-    `SELECT COALESCE(SUM(score),0) AS sum
-     FROM progress
-     WHERE date BETWEEN ? AND ?`,
+    `SELECT COALESCE(SUM(p.score),0) AS sum
+       FROM progress p
+       JOIN users u ON u.id = p.user_id
+      WHERE u.active = 1
+        AND lower(u.role) = 'employee'
+        AND p.date BETWEEN ? AND ?`,
     [fmtYYYYMMDD(start), fmtYYYYMMDD(end)]
   );
   const weekSum = Number(weekSumRow?.sum || 0);
 
   const monthSumRow = await one<{ sum: number }>(
     env.DB,
-    `SELECT COALESCE(SUM(score),0) AS sum
-     FROM progress
-     WHERE strftime('%Y', date)=? AND strftime('%m', date)=?`,
-    [String(year), `${month + 1}`.padStart(2, "0")]
+    `SELECT COALESCE(SUM(p.score),0) AS sum
+       FROM progress p
+       JOIN users u ON u.id = p.user_id
+      WHERE u.active = 1
+        AND lower(u.role) = 'employee'
+        AND strftime('%Y', p.date)=?
+        AND strftime('%m', p.date)=?`,
+    [yyyy, mm]
   );
   const monthSum = Number(monthSumRow?.sum || 0);
 
@@ -495,43 +475,35 @@ async function handleBootstrap(env: Env, url: URL) {
   return ok({ dept, users: usersAgg, usersPrevWeek });
 }
 
-// === user KPIs за указанный день/неделю с учётом политики
-// GET /getprogress?scope=user&userID=..[&date=YYYY-MM-DD]
+/* ================ user KPIs ================= */
+
+// === user KPIs за текущую неделю
 async function handleGetUserKPIs(env: Env, url: URL) {
   const userID = url.searchParams.get("userID");
   if (!userID) return err("userID required");
 
-  const dateStr = url.searchParams.get("date") || fmtYYYYMMDD(new Date());
-  const policy = normalizePolicy(await getSetting(env, "repeat_policy"));
+  const { start, end } = getWeekBounds(new Date());
 
   const kpis = await all<{ id: number; name: string; weight: number; category: string; active: number }>(
     env.DB,
     `SELECT id, name, weight, category, active FROM kpis WHERE active=1 ORDER BY weight DESC, id ASC`
   );
 
-  // при unlimited — все done=false (разрешаем повторы)
-  let doneSet = new Set<number>();
-  if (policy !== "unlimited") {
-    let from = dateStr, to = dateStr;
-    if (policy === "per_week") {
-      const d = parseYMD(dateStr);
-      const { start, end } = getWeekBounds(d);
-      from = fmtYYYYMMDD(start); to = fmtYYYYMMDD(end);
-    }
-    const doneRows = await all<{ kpi_id: number }>(
-      env.DB,
-      `SELECT DISTINCT kpi_id FROM progress WHERE user_id = ? AND date BETWEEN ? AND ?`,
-      [userID, from, to]
-    );
-    doneSet = new Set<number>(doneRows.map(r => r.kpi_id));
-  }
+  const doneRows = await all<{ kpi_id: number }>(
+    env.DB,
+    `SELECT DISTINCT kpi_id FROM progress WHERE user_id = ? AND date BETWEEN ? AND ?`,
+    [userID, fmtYYYYMMDD(start), fmtYYYYMMDD(end)]
+  );
+  const doneSet = new Set<number>(doneRows.map(r => r.kpi_id));
 
   const data = kpis.map(k => ({
     KPI_ID: String(k.id), name: k.name, weight: Number(k.weight || 0), done: doneSet.has(k.id)
   }));
 
-  return jsonResp({ success: true, data, policy });
+  return ok(data);
 }
+
+/* ================ recordKPI & logs ================= */
 
 // GET /recordkpi?userID=&kpiId=&actorEmail[&date=YYYY-MM-DD]
 async function handleRecordKPI(env: Env, url: URL) {
@@ -556,29 +528,10 @@ async function handleRecordKPI(env: Env, url: URL) {
   );
   if (!kpi) return err("invalid kpiId");
 
-  const policy = normalizePolicy(await getSetting(env, "repeat_policy"));
-  if (await isDuplicateByPolicy(env, userID, kpiId, dateStr, policy)) {
-    // конфликт по политике повторов
-    return err("duplicate in selected period by repeat_policy", 409);
-  }
-
   await env.DB
     .prepare(`INSERT INTO progress (user_id, date, kpi_id, completed, score) VALUES (?, ?, ?, 1, ?)`)
     .bind(userID, dateStr, kpiId, kpi.weight || 0)
     .run();
-
-  // История (если есть таблица history — не критично, можно опустить при отсутствии)
-  try {
-    await env.DB.prepare(
-      `INSERT INTO progress (user_id, date, kpi_id, completed, score) VALUES (?, ?, ?, 1, ?)`
-    ).bind(userID, dateStr, kpiId, kpi.weight || 0).run();
-  } catch (e: any) {
-    const msg = String(e?.message || "");
-    if (msg.includes("UNIQUE") || msg.includes("constraint") || msg.includes("unique")) {
-      return err("duplicate in selected period (unique constraint)", 409);
-    }
-    throw e;
-  }
 
   await logEvent(env, "kpi_recorded_backend", actorEmail, Number(userID), Number(kpiId), Number(kpi.weight || 0), { date: dateStr });
 
@@ -815,7 +768,7 @@ async function handleKpiDelete(env: Env, url: URL) {
 
 /* ---------- SETTINGS ---------- */
 
-// GET /settings_get?key=month_goal|repeat_policy
+// GET /settings_get?key=month_goal
 async function handleSettingsGet(env: Env, url: URL) {
   const key = (url.searchParams.get("key") || "").trim();
   if (!key) return err("key required");
@@ -1013,8 +966,6 @@ export default {
         res = await handleUserUpdate(env, url);
       } else if (route === "/user_delete") {
         res = await handleUserDelete(env, url);
-      } else if (route === "/getprogress") {
-        res = await handleGetProgress(env, url);
       } else {
         res = err("Invalid action", 400);
       }
